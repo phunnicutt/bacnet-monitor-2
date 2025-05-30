@@ -1,0 +1,7 @@
+FROM python:2
+
+WORKDIR /home/bacmon
+
+
+
+CMD [ "python", "./BACmon.py" ]

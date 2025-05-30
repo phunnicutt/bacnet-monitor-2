@@ -1,0 +1,43 @@
+{
+  "channels": {
+    "email": {
+      "type": "email",
+      "enabled": true,
+      "min_level": "alert",
+      "smtp_server": "smtp.example.com",
+      "smtp_port": 587,
+      "use_tls": true,
+      "username": "alerts@example.com",
+      "password": "your-password-here",
+      "from_address": "alerts@example.com",
+      "to_addresses": ["admin@example.com", "operator@example.com"]
+    },
+    "webhook": {
+      "type": "webhook",
+      "enabled": true,
+      "min_level": "critical",
+      "url": "https://hooks.slack.com/services/EXAMPLE/WEBHOOK/URL",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json"
+      }
+    },
+    "logfile": {
+      "type": "logfile",
+      "enabled": true,
+      "min_level": "warning",
+      "file": "logs/alerts.log"
+    }
+  },
+  "rate_limits": {
+    "default": {
+      "max_alerts_per_hour": 10,
+      "cooldown_period": 300
+    },
+    "rate-anomaly": {
+      "max_alerts_per_hour": 5,
+      "cooldown_period": 600
+    }
+  },
+  "maintenance": []
+} 

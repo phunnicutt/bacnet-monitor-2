@@ -1,0 +1,54 @@
+# Task ID: 2
+# Title: Python 3 Migration Preparation
+# Status: done
+# Dependencies: None
+# Priority: medium
+# Description: Prepare the environment for Python 3 migration by installing necessary tools like `2to3` and setting up a Python 3 compatible environment.
+# Details:
+
+
+# Test Strategy:
+
+
+# Subtasks:
+## 1. Setup Python 3 Virtual Environment [done]
+### Dependencies: None
+### Description: Create and configure a proper Python 3 virtual environment with the correct version for development and testing.
+### Details:
+Create a new Python 3 virtual environment or update the existing one. Ensure it's properly configured and activated. The virtual environment should be using Python 3.9+ and should be set up to install all required dependencies.
+
+## 2. Install Required Python 3 Packages [done]
+### Dependencies: 2.1
+### Description: Install all necessary packages for Python 3 compatibility, including Redis, BACpypes, and other dependencies listed in requirements.txt.
+### Details:
+Install all dependencies listed in requirements.txt, ensuring they are compatible with Python 3. This includes redis, bacpypes, bottle, and other libraries needed for the project. Verify the installations work correctly in the Python 3 environment.
+
+## 3. Fix XML.py and XHTML.py Syntax Errors [done]
+### Dependencies: 2.2
+### Description: Update the syntax in XML.py and XHTML.py to be compatible with Python 3, particularly focusing on exception handling and module imports.
+### Details:
+Fix the syntax errors in XML.py and XHTML.py:
+1. Update exception raising syntax from 'raise Exception, message' to 'raise Exception(message)'
+2. Update string module imports in XHTML.py (join, replace) which are not available in Python 3
+3. Ensure both modules are compatible with Python 3 while maintaining functionality
+
+## 4. Fix timeutil.py Syntax Issues [done]
+### Dependencies: 2.2
+### Description: Update the timeutil.py module to be compatible with Python 3, focusing on exception syntax and escape sequences in regular expressions.
+### Details:
+Address the following issues in timeutil.py:
+1. Fix invalid escape sequences in regular expressions (e.g., '\d', '\s')
+2. Update exception raising syntax to Python 3 format
+3. Verify that the module functions correctly with Python 3
+4. Run Python 3 syntax check to confirm all issues are fixed
+
+## 5. Update Module Imports for Python 3 [done]
+### Dependencies: 2.2
+### Description: Update imports in BACmonWSGI.py and other modules to use Python 3 compatible module names and paths.
+### Details:
+Fix the module import issues:
+1. Update BACmonWSGI.py to use http.server instead of BaseHTTPServer
+2. Check and update any other modules that use renamed Python modules
+3. Add compatibility imports where needed (using try/except blocks for both Python 2 and 3)
+4. Run the validation script to ensure all module imports are working properly
+

@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  bacmon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bacmon
+    restart: unless-stopped
+    ports:
+      - "47808:47808/udp"  # BACnet port
+      - "6379:6379"        # Redis port (optional, can be removed for production)
+    volumes:
+      - bacmon-logs:/home/bacmon/log
+    environment:
+      - TZ=UTC
+    networks:
+      - bacnet-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  bacmon-logs:
+    name: bacmon-logs
+
+networks:
+  bacnet-network:
+    name: bacnet-network
+    driver: bridge 

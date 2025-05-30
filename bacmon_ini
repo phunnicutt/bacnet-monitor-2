@@ -1,0 +1,10 @@
+[BACmon]
+interface: eth0
+address: 10.0.0.75/24
+bbmd: 10.0.0.254
+logdir: /home/bacmon/logs
+logdirsize: 16106127360
+rollover: 1h
+apachedir: /home/bacmon/apache2
+staticdir: /home/bacmon/static
+templatedir: /home/bacmon/template

@@ -1,0 +1,11 @@
+# Task ID: 1
+# Title: Setup Project Repository
+# Status: done
+# Dependencies: None
+# Priority: medium
+# Description: Create a new repository for the BACmon modernization project, including initial setup for version control and collaboration tools.
+# Details:
+
+
+# Test Strategy:
+

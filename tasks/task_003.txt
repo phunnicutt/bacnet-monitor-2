@@ -1,0 +1,37 @@
+# Task ID: 3
+# Title: Update Exception Handling Syntax
+# Status: done
+# Dependencies: 2
+# Priority: medium
+# Description: Update exception handling from `except Exception, err:` to `except Exception as err:` to ensure Python 3 compatibility. Additionally, implement other Python 3 compatibility fixes in the codebase.
+# Details:
+This task involves updating the exception handling syntax in bin/smtpd.py to Python 3 compatible format. All identified instances have been successfully converted. Additional Python 3 compatibility fixes have been applied, including updating the shebang, print statements, cStringIO import, exception attribute access, and Python version requirement comment. The file is now fully Python 3 compatible.
+
+# Test Strategy:
+1. Verify that all exception handling syntax in bin/smtpd.py uses the Python 3 format (`except Exception as err`). 
+2. Confirm that the shebang is updated to #!/usr/bin/python3. 
+3. Check that all print statements use the Python 3 format (`print(message, file=stream)`). 
+4. Validate that cStringIO is replaced with io.StringIO. 
+5. Ensure exception attribute access uses `err.args[0]` instead of `err[0]`. 
+6. Confirm the Python version requirement comment is updated to 3.0+. 
+7. Search the entire codebase to ensure no other files contain legacy exception handling syntax.
+
+# Subtasks:
+## 3-1. Update Exception Handling Syntax in bin/smtpd.py [completed]
+### Dependencies: None
+### Description: Fix all instances of exception handling syntax in bin/smtpd.py to use Python 3 compatible format.
+### Details:
+
+
+## 3-2. Apply Additional Python 3 Compatibility Fixes [completed]
+### Dependencies: None
+### Description: Implement additional Python 3 compatibility changes including shebang update, print statement conversion, cStringIO import replacement, exception attribute access update, and version requirement comment update.
+### Details:
+
+
+## 3-3. Verify Codebase for Legacy Syntax [completed]
+### Dependencies: None
+### Description: Search the entire codebase to confirm no other files contain legacy exception handling syntax.
+### Details:
+
+

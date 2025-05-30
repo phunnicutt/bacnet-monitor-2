@@ -1,0 +1,68 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:	bacmonlogger
+# Required-Start:	$syslog
+# Required-Stop:	$syslog
+# Should-Start:	$local_fs
+# Should-Stop:	$local_fs
+# Default-Start:	2 3 4 5
+# Default-Stop:	0 1 6
+# Short-Description:	bacmonlogger
+# Description:	bacmonlogger
+### END INIT INFO
+
+BACMON_HOME=/home/bacmon
+BACMON_INI=$BACMON_HOME/BACmon.ini
+
+test -e $BACMON_INI || exit 0
+
+BACMON_INTERFACE=`cat $BACMON_INI | grep ^interface: | awk -F:\  '{ print $2 }'`
+BACMON_LOGDIR=`cat $BACMON_INI | grep ^logdir: | awk -F:\  '{ print $2 }'`
+BACMON_ROLLOVER=`cat $BACMON_INI | grep ^rollover: | awk -F:\  '{ print $2 }'`
+
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+DAEMON=/usr/bin/daemonlogger
+DAEMON_ARGS="-d -i $BACMON_INTERFACE -l $BACMON_LOGDIR/ -t $BACMON_ROLLOVER (udp port 47808) or (vlan and udp port 47808)"
+NAME=bacmonlogger
+DESC=bacmonlogger
+PIDFILE=/var/run/bacmonlogger.pid
+
+test -x $DAEMON || exit 0
+test -x $DAEMONBOOTSTRAP || exit 0
+
+set -e
+
+case "$1" in
+  start)
+	echo -n "Starting $DESC: "
+	touch $PIDFILE
+	chown bacmon:nogroup $PIDFILE
+	if start-stop-daemon --start --quiet --umask 000 --pidfile $PIDFILE --exec $DAEMON -- $DAEMON_ARGS
+	then
+		echo "$NAME."
+	else
+		echo "failed"
+	fi
+	;;
+  stop)
+	echo -n "Stopping $DESC: "
+	if start-stop-daemon --stop --retry 10 --quiet --oknodo --pidfile $PIDFILE --exec $DAEMON
+	then
+		echo "$NAME."
+	else
+		echo "failed"
+	fi
+	rm -f $PIDFILE
+	;;
+
+  restart|force-reload)
+	${0} stop
+	${0} start
+	;;
+  *)
+	echo "Usage: /etc/init.d/$NAME {start|stop|restart|force-reload}" >&2
+	exit 1
+	;;
+esac
+
+exit 0

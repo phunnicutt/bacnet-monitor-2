@@ -1,0 +1,37 @@
+# BACmon Simple Authentication Configuration
+# Copy these settings to your .env file to configure authentication
+
+# Enable/disable authentication (set to 'false' to disable all auth)
+AUTH_ENABLED=true
+
+# Session timeout in seconds (default: 3600 = 1 hour)
+AUTH_SESSION_TIMEOUT=3600
+
+# Show test credentials on login page (set to 'false' in production)
+AUTH_SHOW_TEST_CREDS=true
+
+# Custom API keys (JSON format) - Optional
+# If not set, default test keys will be used
+# AUTH_API_KEYS={"custom_key_123": {"name": "Custom Key", "permissions": ["read", "write"], "created": 1640995200}}
+
+# Redis configuration (if using Redis for session storage)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+
+# Example custom user credentials can be added to the login function in BACmonWSGI.py
+# Current test users:
+# - test:test123 (read/write permissions)
+# - admin:admin123 (admin permissions)  
+# - readonly:readonly123 (read-only permissions)
+
+# Default API keys for testing:
+# - test_key_123 (read/write permissions)
+# - admin_key_456 (admin permissions)
+
+# Quick Setup for Testing:
+# 1. Copy these settings to .env file in project root
+# 2. Start BACmon server
+# 3. Visit http://localhost:8080/login
+# 4. Use test:test123 or admin:admin123 credentials
+# 5. Or use API with X-API-Key: test_key_123 header 

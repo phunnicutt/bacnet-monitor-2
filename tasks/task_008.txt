@@ -1,0 +1,11 @@
+# Task ID: 8
+# Title: Update BACpypes Dependency
+# Status: pending
+# Dependencies: 3, 5
+# Priority: medium
+# Description: Update the BACpypes library to the latest version compatible with Python 3.
+# Details:
+
+
+# Test Strategy:
+

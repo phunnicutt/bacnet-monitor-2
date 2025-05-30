@@ -1,0 +1,2 @@
+# m h  dom mon dow   command
+  1 0   *   *   *    /home/bacmon/bacmonlogger_purge.sh >> /dev/null 2>&1

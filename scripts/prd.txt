@@ -1,0 +1,98 @@
+# BACmon Modernization Project - PRD
+
+# Overview
+BACmon is a BACnet LAN monitoring tool designed to capture, analyze, and log BACnet traffic on a network. It monitors BACnet messages exchanged over UDP port 47808, processes various Protocol Data Units (PDUs), and stores traffic statistics and error information in Redis. The system currently runs on Python 2, which reaches end-of-life status, making modernization necessary. This project aims to update BACmon to Python 3 compatibility while maintaining its core functionality and improving its reliability and performance.
+
+# Core Features
+- **BACnet Traffic Monitoring**: Captures and decodes BACnet network traffic in real-time
+- **Protocol Analysis**: Decodes and analyzes BACnet PDUs at multiple layers (link, network, application)
+- **Traffic Statistics**: Counts and categorizes different types of BACnet messages
+- **Error Detection**: Identifies malformed packets and protocol errors
+- **Rate Monitoring**: Tracks message rates and provides alerts for abnormal conditions
+- **Redis Integration**: Stores all monitoring data in Redis for persistence and further analysis
+
+# User Experience
+- **System Administrators**: Network administrators who need to monitor BACnet traffic for troubleshooting
+- **Building Automation Engineers**: Technical staff managing building automation systems based on BACnet
+- **Key Flows**: Setup monitoring, view real-time statistics, analyze historical data, receive alerts
+- **UI Considerations**: Currently operates as a daemon with Redis-based data access, may need web interface in future
+
+# Technical Architecture
+- **System Components**:
+  - Python 3 daemon process
+  - BACpypes library (updated version) for BACnet protocol handling
+  - Redis database for data storage
+  - Configuration file for settings
+
+- **Data Models**:
+  - Traffic counts by message type, source, time intervals
+  - Error logs with categorization
+  - Rate monitoring with thresholds and alert history
+
+- **APIs and Integrations**:
+  - Redis client interface
+  - UDP socket for BACnet traffic capture
+  - Potential future REST API for dashboard integration
+
+- **Infrastructure Requirements**:
+  - Linux/Docker environment
+  - Python 3.6+ runtime
+  - Redis server
+  - Network access to BACnet traffic (port 47808)
+
+# Development Roadmap
+## Phase 1: Python 3 Migration (MVP)
+- Update exception handling syntax from `except Exception, err:` to `except Exception as err:`
+- Replace ConfigParser with configparser module
+- Update string handling for bytes vs. str compatibility
+- Address changed module imports (Redis client)
+- Fix any other Python 3 compatibility issues
+- Update Docker configuration for Python 3
+
+## Phase 2: Library Modernization
+- Update BACpypes dependency to latest compatible version
+- Modernize Redis client implementation
+- Replace any deprecated method calls with current equivalents
+- Improve error handling and logging
+- Implement type hints for better code maintainability
+
+## Phase 3: Feature Enhancements
+- Implement configuration validation
+- Add more sophisticated rate monitoring capabilities
+- Improve error reporting format
+- Add structured logging with rotation
+- Enhance monitoring statistics
+
+## Phase 4: Extensibility
+- Add plugin architecture for custom message processors
+- Implement REST API for remote access to monitoring data
+- Create basic web dashboard for monitoring visualization
+- Add export functionality for captured data
+
+# Logical Dependency Chain
+1. **Foundation**: Python 3 migration must come first as it affects all code
+2. **Core Library Updates**: BACpypes and Redis client updates follow as they're essential for operation
+3. **Configuration System**: Enhance configuration handling for easier deployment
+4. **Monitoring Enhancements**: Improve the core monitoring capabilities
+5. **Interface Layer**: Add API and visualization components last
+
+# Risks and Mitigations
+- **Protocol Compatibility**: Newer BACpypes versions might handle protocol differently
+  - *Mitigation*: Extensive testing with captured real-world traffic
+  
+- **Performance Impact**: Python 3 or updated libraries might affect performance
+  - *Mitigation*: Benchmark before and after, optimize critical paths if needed
+
+- **Redis Client API Changes**: Redis client library might have breaking changes
+  - *Mitigation*: Create abstraction layer to isolate Redis interaction code
+
+- **Configuration Compatibility**: Existing configurations must still work
+  - *Mitigation*: Create migration utility for configuration files
+
+- **Deployment Complexity**: New dependencies might complicate deployment
+  - *Mitigation*: Provide comprehensive Docker setup and documentation
+
+# Appendix
+- **Python 3 Changes Reference**: https://docs.python.org/3/whatsnew/3.0.html
+- **BACpypes Documentation**: http://bacpypes.sourceforge.net/
+- **Redis Python Client**: https://github.com/redis/redis-py 

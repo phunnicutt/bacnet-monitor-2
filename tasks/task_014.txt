@@ -1,0 +1,226 @@
+# Task ID: 14
+# Title: Implement REST API for Remote Access
+# Status: in-progress
+# Dependencies: None
+# Priority: medium
+# Description: Create a REST API to allow remote access to monitoring data.
+# Details:
+
+
+# Test Strategy:
+
+
+# Subtasks:
+## 1. UI Design for API Interaction [done]
+### Dependencies: None
+### Description: Design the user interface for interacting with the REST API, focusing on how users will access endpoints and view data.
+### Details:
+Create wireframes and mockups for API interaction screens, ensuring ease of use for accessing monitoring data and alerts.
+
+## 2. Frontend Implementation of API Client [done]
+### Dependencies: 14.1
+### Description: Develop the frontend components to interact with the REST API using the Bottle framework.
+### Details:
+Implement the UI designs into functional frontend code, ensuring seamless API calls for data retrieval and display.
+<info added on 2025-05-30T22:02:40.408Z>
+Frontend implementation of the API client is complete with a comprehensive dashboard featuring 6 dedicated panels for REST API endpoints, real-time system status indicators, interactive controls, and a professional grid-based responsive design. Key components include a modern UI dashboard template (template/api_dashboard.tpl), a complete CSS styling system (static/api-dashboard.css), a JavaScript API client (static/js/api-client.js) with unified error handling and query parameter building, an interactive dashboard controller (static/js/api-dashboard.js) with real-time updates and Chart.js integration, and WSGI integration with a new /api-dashboard route in BACmonWSGI.py. Technical features encompass real-time system monitoring, interactive data visualization with time-series charts and dynamic tables, advanced filtering and search options, multiple export formats (JSON, CSV), and robust error handling with user-friendly UX. Successfully integrated with all 6 major REST API endpoints: /api/status, /api/monitoring, /api/traffic, /api/devices, /api/anomalies, and /api/export. Files created or modified include template/api_dashboard.tpl, static/api-dashboard.css, static/js/api-client.js, static/js/api-dashboard.js, BACmonWSGI.py, and template/basic.tpl for navigation updates. This implementation delivers a production-ready interface for seamless interaction with the BACmon REST API system.
+</info added on 2025-05-30T22:02:40.408Z>
+
+## 3. Backend API Endpoint Development [done]
+### Dependencies: None
+### Description: Expand existing API endpoints to create a comprehensive REST API system with standardized endpoints.
+### Details:
+Develop new endpoints for monitoring data, integrating with Redis storage and existing monitoring capabilities.
+<info added on 2025-05-30T21:48:13.786Z>
+Analysis of the existing API structure reveals the following endpoints and architecture details:
+
+Current API Endpoints:
+- /api/alerts (GET) - Get active alerts
+- /api/alerts/history (GET) - Get alert history
+- /api/alerts/<uuid> (GET) - Get specific alert
+- /api/alerts/<uuid>/acknowledge (POST) - Acknowledge alert
+- /api/alerts/<uuid>/resolve (POST) - Resolve alert
+- /api/extended_metrics (GET) - Get extended metrics data
+- /api/metrics (GET) - Get list of all metrics
+- /api/metrics/<key> (GET) - Get metrics data for specific key
+
+Current Architecture:
+- Framework: Bottle.py for WSGI
+- Data Storage: Redis with enhanced RedisClient wrapper
+- Response Format: JSON responses with dict returns
+- Error Handling: Basic HTTP status codes (404 for not found)
+- Authentication: None currently implemented
+
+Key Integration Points:
+- Redis Client: Enhanced redis_client.py with retry logic, connection pooling
+- Alert Manager: alert_manager.py for alert handling
+- Metrics System: metrics.py for extended monitoring
+- Anomaly Detection: anomaly_detection.py integration
+- Enhanced Rate Monitoring: New rate monitoring capabilities
+
+Implementation Plan for REST API Expansion:
+1. Standardize API Response Format
+   - Create consistent JSON response wrapper
+   - Implement proper HTTP status codes
+   - Add timestamp and version info to responses
+2. Add Core Monitoring Data Endpoints
+   - /api/status - System health and information
+   - /api/monitoring - Real-time monitoring data
+   - /api/traffic - Network traffic analysis
+   - /api/devices - BACnet device information
+   - /api/anomalies - Anomaly detection data
+3. Enhance Existing Endpoints
+   - Add query parameter support (time ranges, filtering)
+   - Implement pagination for large datasets
+   - Add data export capabilities (CSV, JSON)
+4. Data Access Patterns
+   - Time-series data access (current pattern: eval() on Redis list data)
+   - Real-time vs historical data separation
+   - Efficient bulk data retrieval
+
+Next Steps:
+- Create API response standardization
+- Implement core monitoring endpoints
+- Add proper error handling and logging
+- Set up query parameter parsing
+</info added on 2025-05-30T21:48:13.786Z>
+<info added on 2025-05-30T21:53:58.241Z>
+Comprehensive REST API backend implementation has been completed with the following achievements:
+
+1. Standardized Response System:
+   - Implemented `create_api_response()` function for consistent JSON responses with format including status, timestamp, version, code, and data/error.
+   - Ensured all API responses use proper HTTP status codes and enhanced error handling with detailed logging.
+
+2. Enhanced Core API Endpoints:
+   - Developed `/api/status` for system health and information dashboard.
+   - Created `/api/monitoring` for real-time monitoring data with filtering, pagination, and time ranges.
+   - Added `/api/traffic` for network traffic analysis with category filtering.
+   - Implemented `/api/devices` for BACnet device information including Who-Is/I-Am data.
+   - Built `/api/anomalies` for anomaly detection data with severity filtering.
+   - Added `/api/export` for data export in JSON/CSV formats with flexible filtering.
+
+3. Advanced Query Features:
+   - Added time range support with options like `?range=1h/6h/24h/7d/30d` or explicit `?start=X&end=Y`.
+   - Implemented pagination with `?offset=X&limit=Y` (max 1000, default 100).
+   - Enabled filtering by key, traffic type, and severity levels.
+   - Supported multiple formats including JSON responses and CSV export capabilities.
+
+4. Enhanced Existing Endpoints:
+   - Updated `/api/alerts/*` and `/api/metrics/*` to use standardized response format.
+   - Added comprehensive error handling, logging, and improved data structure consistency while maintaining backward compatibility.
+
+5. Production-Ready Features:
+   - Incorporated comprehensive error handling with try/catch blocks.
+   - Added detailed logging for debugging and monitoring.
+   - Implemented input validation, sanitization, and performance optimization with data limiting.
+   - Managed Redis connections through an enhanced client.
+   - Integrated with all BACmon subsystems including alerts, metrics, anomaly detection, and rate monitoring.
+
+Technical Implementation Details:
+- Created helper functions such as `create_api_response()`, `get_redis_client()`, `parse_time_range()`, `get_pagination_params()`, `calculate_metric_statistics()`, and `get_metric_thresholds()` for dynamic threshold retrieval.
+- Ensured integration with Redis storage, Alert Manager, metrics, anomaly detection, rate monitoring, and existing WSGI application structure.
+
+Testing Infrastructure:
+- Developed a comprehensive test script `test_api_endpoints.py` to test all new endpoints with various parameter combinations, validate response format standardization, check error handling, edge cases, and provide detailed test reporting and success metrics.
+
+API Endpoint Summary:
+- System & Health: `GET /api/status` for system status, Redis health, and service availability.
+- Data Access: `GET /api/monitoring`, `/api/traffic`, `/api/devices`, and `/api/anomalies` for respective data with filtering.
+- Enhanced Existing: Updated endpoints for alerts and metrics with pagination and individual data access.
+- Data Export: `GET /api/export` for flexible data export in JSON/CSV.
+
+The backend API endpoint development is now complete, production-ready, and provides a robust foundation for frontend development, third-party integrations, and remote monitoring capabilities, following best practices for API design, error handling, and data access patterns.
+</info added on 2025-05-30T21:53:58.241Z>
+
+## 4. Authentication and Authorization Setup [done]
+### Dependencies: 14.3
+### Description: Implement security measures for the REST API to ensure secure access.
+### Details:
+Add user authentication and role-based authorization to protect API endpoints from unauthorized access.
+<info added on 2025-05-30T22:11:43.806Z>
+## Implementation Summary
+Created a simple but functional authentication system perfect for testing and development:
+
+### 1. Simple Authentication Module (`simple_auth.py`)
+- **SimpleAuth Class**: Basic authentication manager with API key and session support
+- **Environment Configuration**: Configurable via AUTH_ENABLED, AUTH_SESSION_TIMEOUT, AUTH_SHOW_TEST_CREDS
+- **Dual Storage**: Memory-based (for testing) with Redis fallback for production
+- **Default API Keys**: test_key_123 (read/write) and admin_key_456 (admin)
+- **Permission System**: read, write, admin permissions with role-based access
+
+### 2. Authentication Decorators
+- **@require_auth(permission)**: Protects API endpoints with permission checking
+- **@require_admin()**: Requires admin permission for sensitive operations
+- **@login_required**: Protects web pages requiring user session
+- **Flexible Authentication**: Supports both API keys (X-API-Key header) and session cookies
+
+### 3. Web Authentication Interface
+- **Login Template** (`template/login.tpl`): Professional login form matching BACmon design
+- **Test Credentials Display**: Shows test users and API keys in development mode
+- **Session Management**: Secure cookie-based sessions with timeout
+- **Login/Logout Routes**: Complete web authentication workflow
+
+### 4. System Integration
+- **BACmonWSGI Integration**: Added auth imports, login/logout/auth-info routes
+- **API Protection**: All major API endpoints now require 'read' permission
+- **Admin Protection**: Info, flush, and auth endpoints require 'admin' permission
+- **Template Context**: Authentication status included in navigation (login/logout links)
+
+### 5. Testing Infrastructure
+- **Test Script** (`test_simple_auth.py`): Comprehensive authentication testing
+- **Configuration Example** (`auth_config_example.txt`): Setup instructions and examples
+- **Multiple Auth Methods**: Tests API keys, web sessions, admin access, invalid credentials
+
+## Ready-to-Use Test Credentials
+
+### Web Login:
+- **test:test123** (read/write access)
+- **admin:admin123** (full admin access)
+- **readonly:readonly123** (read-only access)
+
+### API Keys:
+- **X-API-Key: test_key_123** (read/write permissions)
+- **X-API-Key: admin_key_456** (admin permissions)
+
+## Quick Testing Setup:
+1. Start BACmon server
+2. Visit http://localhost:8080/login for web access
+3. Use curl with API keys: `curl -H "X-API-Key: test_key_123" http://localhost:8080/api/status`
+4. Run `python test_simple_auth.py` for automated testing
+5. Visit /auth/info for authentication status and available keys
+
+## Security Features:
+- Session timeout (1 hour default)
+- Secure session tokens (32-byte URL-safe)
+- HTTP-only cookies
+- Permission-based access control
+- Authentication bypass option (AUTH_ENABLED=false)
+- Input validation and error handling
+
+This implementation provides sufficient security for testing while being simple to configure and use. Perfect for development and demonstration purposes without the complexity of full enterprise authentication systems.
+</info added on 2025-05-30T22:11:43.806Z>
+
+## 5. Rate Limiting and API Documentation [deferred]
+### Dependencies: 14.3
+### Description: Add rate limiting to prevent abuse and provide detailed API documentation for users.
+### Details:
+Implement rate limiting mechanisms and create comprehensive documentation for all API endpoints.
+
+## 6. Consistent JSON Formats and Error Handling [pending]
+### Dependencies: 14.3
+### Description: Ensure all API responses follow a consistent JSON format and include proper error handling.
+### Details:
+Standardize response structures and implement error codes and messages for various failure scenarios.
+
+## 7. API Versioning and Data Access Support [pending]
+### Dependencies: 14.3
+### Description: Add versioning to the API and support for both real-time and historical data access.
+### Details:
+Implement versioning strategy for API endpoints and ensure access to both live and historical monitoring data.
+
+## 8. User Acceptance Testing for API System [pending]
+### Dependencies: 14.2, 14.4, 14.5, 14.6, 14.7
+### Description: Conduct user acceptance testing to validate the REST API system meets requirements.
+### Details:
+Engage end-users to test the API system, gather feedback, and ensure it integrates well with existing systems.
+

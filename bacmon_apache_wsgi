@@ -1,0 +1,13 @@
+<VirtualHost *:80>
+    ServerAdmin webmaster@localhost
+
+    WSGIScriptAlias / /home/bacmon/BACmonWSGI.py
+
+    ErrorLog /home/bacmon/apache2/error.log
+
+    # Possible values include: debug, info, notice, warn, error, crit,
+    # alert, emerg.
+    LogLevel warn
+
+    CustomLog /home/bacmon/apache2/access.log combined
+</VirtualHost>

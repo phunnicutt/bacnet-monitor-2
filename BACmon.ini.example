@@ -1,0 +1,103 @@
+[BACmon]
+# Network interface to bind to
+interface: eth0
+
+# BACnet device address in CIDR notation
+address: 192.168.1.100/24
+
+# BBMD (BACnet/IP Broadcast Management Device) address
+# Can be multiple addresses separated by spaces
+bbmd: 192.168.1.1
+
+# Directory for log files
+logdir: /home/bacmon/logs
+
+# Maximum log directory size in bytes (default: ~15GB)
+logdirsize: 16106127360
+
+# Log file rollover period (default: 1 hour)
+# Valid units: s (seconds), m (minutes), h (hours), d (days)
+rollover: 1h
+
+# Apache log directory
+apachedir: /home/bacmon/apache2
+
+# Static files directory
+staticdir: /home/bacmon/static
+
+# Template files directory
+templatedir: /home/bacmon/template
+
+[Redis]
+# Redis server connection settings
+host: localhost
+port: 6379
+db: 0
+# password: your_password_here
+socket_timeout: 5.0
+socket_connect_timeout: 5.0
+
+[RedisOptimization]
+# Redis storage optimization settings
+# Enable optimization features (compression, retention policies, aggregation)
+enabled: true
+
+# Data compression settings
+compression_enabled: true
+compression_level: 6
+min_compression_size: 100
+
+# Automatic cleanup settings
+auto_cleanup_enabled: true
+cleanup_interval_seconds: 3600
+
+# Memory management
+max_memory_usage_mb: 1024
+enable_memory_monitoring: true
+
+# Performance tuning
+batch_size: 1000
+pipeline_operations: true
+
+# Retention policies (override defaults)
+# Format: <key_pattern>: <duration_hours>, <resolution_seconds>, <aggregation_func>
+# high_freq_retention: "*:s", 1, 1, "avg"        # High frequency data: 1 hour raw
+# medium_freq_retention: "*:m", 24, 60, "avg"    # Medium frequency: 24 hours raw
+# low_freq_retention: "*:h", 168, 3600, "avg"    # Low frequency: 7 days raw
+# alarm_retention: "*:alarm-history", 720, 1, "first"  # Alarms: 30 days
+
+[RateMonitoring]
+# Rate monitoring configuration
+# Format: <key>: <metric_key>, <interval>, <threshold_value>, <consecutive_duration>
+# 
+# - metric_key: The Redis key to monitor (e.g., "total:s" for total traffic per second)
+# - interval: Sample interval in seconds
+# - threshold_value: Maximum allowed value before triggering an alert
+# - consecutive_duration: Number of consecutive samples above threshold needed to trigger
+
+# Scan interval in milliseconds (how often to check rates)
+scan_interval: 10000
+
+# Enable enhanced anomaly detection (requires anomaly_detection.py module)
+use_enhanced_detection: true
+
+# Enhanced detection parameters
+# These are used only when use_enhanced_detection is true
+sensitivity: 1.0        # Overall sensitivity multiplier (higher = more sensitive)
+spike_sensitivity: 2.0  # Sensitivity for spike detection (multiplier for average value)
+z_threshold: 3.0        # Z-score threshold for statistical anomalies
+trend_threshold: 0.2    # Threshold for trend anomalies (0-1, higher = steeper trend needed)
+hour_granularity: 1     # Hour grouping for time-aware detection (1 = hourly, 3 = every 3 hours)
+
+# Rate monitoring thresholds
+# Total traffic rate (packets per second)
+total_rate: total:s, 1, 20, 30
+
+# IP-specific rate (packets per second from a specific IP)
+# ip_specific_rate: 192.168.1.100:s, 1, 10, 30
+
+# Application layer rate (packets per second)
+# app_layer_rate: app-layer:s, 1, 15, 30
+
+# Network layer rate (packets per second)
+# network_layer_rate: network-layer:s, 1, 15, 30 
