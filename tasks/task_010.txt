@@ -1,6 +1,6 @@
 # Task ID: 10
 # Title: Improve Error Handling and Logging
-# Status: pending
+# Status: done
 # Dependencies: 8
 # Priority: medium
 # Description: Enhance error handling and logging mechanisms for better reliability and debugging.
@@ -8,4 +8,209 @@
 
 
 # Test Strategy:
+
+
+# Subtasks:
+## 1. Analyze Current Logging and Error Handling Setup [done]
+### Dependencies: None
+### Description: Review the existing BACmon logging and error handling mechanisms. Identify current logging formats, error handling patterns, log rotation, configuration options, and diagnostic capabilities. Document gaps, pain points, and opportunities for modernization.
+### Details:
+Collect and review all modules for their current logging statements, error handling code, and configuration files. Summarize findings regarding log structure, granularity, error reporting, and debugging aids. Identify inconsistencies, missing features (such as structured logging or log rotation), and areas where exception handling does not follow best practices.
+<info added on 2025-05-30T23:52:51.164Z>
+Current Logging and Error Handling Analysis
+
+Current Logging Setup
+1. Multiple Logging Configurations:
+   - alert_manager.py: Uses logging.basicConfig() with INFO level and standard format
+   - test_* files: Various basic configurations with INFO/DEBUG levels
+   - BACmon.py and BACmonWSGI.py: Use BACpypes ModuleLogger system with debug flags
+   - No centralized logging configuration
+2. BACpypes Debug System:
+   - Uses custom ModuleLogger and function_debugging decorators
+   - _debug variable controls debug output per module
+   - Console logging via ConsoleLogHandler
+   - Custom LoggingFormatter for structured output
+3. Inconsistent Patterns:
+   - Some modules use standard Python logging
+   - Others use BACpypes debugging system
+   - Mix of logger.info(), _log.debug(), and sys.stderr.write()
+   - No structured logging or JSON format
+
+Current Error Handling
+1. Basic Exception Handling:
+   - BACmon.py: Main try/catch around initialization and run
+   - BACmonWSGI.py: Uses safe_redis_operation() wrapper for Redis calls
+   - Alert system has structured error codes in APIErrorCodes class
+2. Error Handling Patterns:
+   - Broad except Exception catches in many places
+   - Limited specific exception handling
+   - Redis errors handled with connection error catching
+   - Some functions write to sys.stderr directly
+3. Missing Features:
+   - No log rotation configured
+   - No centralized error reporting
+   - No structured error context/debugging aids
+   - No configuration-driven logging levels
+
+Configuration Management
+1. Current Setup:
+   - Configuration read from BACmon.ini using ConfigParser
+   - Redis settings configurable in config file
+   - No logging configuration in config file
+   - Hard-coded logging levels and formats
+
+Gap Analysis
+Major Gaps:
+- No structured logging (JSON format)
+- No log rotation/management
+- Inconsistent logging approaches across modules
+- No centralized error handling standards
+- No configuration-driven logging levels
+- No error monitoring/reporting integration
+- No debugging aids for production issues
+Modernization Opportunities:
+- Implement structured logging with JSON format
+- Add configuration-driven log levels and rotation
+- Standardize exception handling across all modules
+- Integrate error monitoring/alerting
+- Add diagnostic information collection
+- Implement proper Python 3 exception chaining
+</info added on 2025-05-30T23:52:51.164Z>
+
+## 2. Design Enhanced Logging and Error Handling Framework [done]
+### Dependencies: 10.1
+### Description: Define new logging categories, structured logging formats, and error handling standards for BACmon. Specify configuration-driven logging levels, log rotation policies, and error reporting/monitoring integration. Establish Python 3 exception handling best practices and debugging aids.
+### Details:
+Draft a logging schema using structured formats (e.g., JSON), define log categories (info, warning, error, debug), and specify configuration options for log levels and rotation. Outline a standardized error handling approach using specific exceptions, meaningful messages, and custom exception classes where needed. Plan integration with error monitoring tools and include diagnostic information in logs. Document exception handling patterns (e.g., using 'from e' syntax, catching specific exceptions) and debugging aids.
+<info added on 2025-05-30T23:53:27.689Z>
+Enhanced Logging and Error Handling Framework Design
+
+1. Structured Logging Framework
+Core Components:
+- bacmon_logger.py: Central logging configuration module
+- JSON-formatted log messages for structured data
+- Configurable log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+- Multiple output destinations (console, file, syslog)
+
+Log Categories:
+- system: Core system operations and lifecycle events
+- monitoring: BACnet traffic monitoring and analysis
+- api: REST API requests and responses
+- redis: Database operations and connectivity
+- alerts: Alert generation and notification events
+- security: Authentication and authorization events
+- performance: Performance metrics and timing
+
+Structured Log Format Example:
+{
+  "timestamp": "2025-05-30T23:52:51.164Z",
+  "level": "INFO",
+  "category": "monitoring",
+  "module": "BACmon",
+  "function": "process_packet",
+  "message": "Processed BACnet packet",
+  "data": {
+    "packet_type": "WhoIs",
+    "source": "192.168.1.100",
+    "size": 48
+  },
+  "correlation_id": "abc123",
+  "request_id": "req_456"
+}
+
+2. Configuration-Driven Logging
+BACmon.ini Logging Section Example:
+[Logging]
+level = INFO
+format = json
+max_size_mb = 50
+max_files = 10
+rotate_daily = true
+console_enabled = true
+file_enabled = true
+syslog_enabled = false
+log_file = /var/log/bacmon/bacmon.log
+error_log = /var/log/bacmon/error.log
+level_monitoring = INFO
+level_api = WARNING
+level_security = INFO
+level_performance = DEBUG
+
+3. Enhanced Error Handling Standards
+Custom Exception Classes:
+- BACmonError: Base exception for all BACmon-specific errors
+- BACmonConfigError: Configuration-related errors
+- BACmonRedisError: Redis connectivity/operation errors
+- BACmonNetworkError: Network communication errors
+- BACmonValidationError: Data validation errors
+
+Error Handling Patterns:
+- Use specific exception types instead of broad except Exception
+- Implement exception chaining with raise ... from e
+- Include context information in exception messages
+- Structured error logging with correlation IDs
+
+Error Context Collection Example:
+@error_context(module="monitoring", operation="packet_processing")
+def process_packet(packet_data):
+    try:
+        # processing logic
+        pass
+    except ValidationError as e:
+        # Automatically includes context in error log
+        raise BACmonValidationError("Invalid packet format") from e
+
+4. Log Rotation and Management
+Rotation Policy:
+- Size-based rotation (configurable, default 50MB)
+- Time-based rotation (daily, weekly options)
+- Retention policy (configurable number of files)
+- Compression of old log files
+
+Log Management Features:
+- Health checks for logging system
+- Log file cleanup utilities
+- Log aggregation for distributed deployments
+
+5. Error Monitoring Integration
+Metrics Collection:
+- Error rate tracking by category
+- Performance timing collection
+- Resource usage monitoring
+- Alert generation for error spikes
+
+Integration Points:
+- Custom alert channels for critical errors
+- Structured data for external monitoring systems
+- Health check endpoints exposing logging status
+
+6. Debugging Aids
+Enhanced Debug Information:
+- Request/response correlation IDs
+- Timing information for operations
+- Resource usage snapshots
+- Stack traces with local variables (debug mode only)
+
+Development Tools:
+- Debug mode toggle via configuration
+- Enhanced logging in development environments
+- Log analysis utilities and filters
+
+7. Backward Compatibility
+Migration Strategy:
+- Gradual migration from existing logging patterns
+- Compatibility layer for BACpypes debugging system
+- Configuration migration utilities
+
+Existing System Integration:
+- Preserve existing debug flags where possible
+- Enhance rather than replace working patterns
+- Maintain console output for development
+</info added on 2025-05-30T23:53:27.689Z>
+
+## 3. Implement and Test Logging and Error Handling Enhancements [done]
+### Dependencies: 10.2
+### Description: Apply the new logging and error handling framework across all BACmon modules. Implement structured logging, standardized error handling, log rotation, configuration-driven levels, and error reporting. Develop and execute tests to verify correct logging, error capture, and diagnostic output.
+### Details:
+Refactor code to use structured logging and new categories. Replace broad exception handling with specific, meaningful exceptions and messages. Implement log rotation and configuration-driven log levels. Integrate error monitoring/reporting tools. Add debugging aids and ensure diagnostic information is included in logs. Create unit and integration tests to validate logging output, error handling behavior, log rotation, and monitoring integration. Review logs for completeness and clarity.
 

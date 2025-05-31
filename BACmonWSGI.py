@@ -14,17 +14,10 @@ import json
 from datetime import datetime, timedelta
 
 # monkeypatch to avoid a really slow getfqdn call
-try:
-    # Python 3
-    import http.server as BaseHTTPServer
-    from http.client import responses as http_responses
-    from urllib.parse import parse_qs, urlencode
-except ImportError:
-    # Python 2
-    import BaseHTTPServer
-    from httplib import responses as http_responses
-    from urllib import urlencode
-    from urlparse import parse_qs
+# Python 3 HTTP imports
+import http.server as BaseHTTPServer
+from http.client import responses as http_responses
+from urllib.parse import parse_qs, urlencode
 
 BaseHTTPServer.BaseHTTPRequestHandler.address_string = \
     lambda self: str(self.client_address[0])
@@ -47,6 +40,26 @@ from time import time as _time
 
 # version
 __version__ = '1.0.0'
+__api_version__ = 'v1'  # Current API version
+
+# API versioning configuration
+API_VERSIONS = {
+    'v1': {
+        'version': '1.0.0',
+        'supported': True,
+        'deprecated': False,
+        'features': ['basic_auth', 'json_responses', 'error_codes', 'pagination']
+    },
+    'v2': {
+        'version': '2.0.0',
+        'supported': True,
+        'deprecated': False,
+        'features': ['basic_auth', 'json_responses', 'error_codes', 'pagination', 'streaming', 'enhanced_filtering', 'data_aggregation']
+    }
+}
+
+# Default API version for backward compatibility
+DEFAULT_API_VERSION = 'v1'
 
 # some debugging
 _debug = 0
@@ -1219,7 +1232,7 @@ def get_anomaly_data(key: str, samples: List[Dict[str, Any]]) -> Tuple[List[Dict
     
     # Check alarm history for this key
     alarm_history_key = f"{key}:alarm-history"
-    if r.type(alarm_history_key) != b'none':
+    if r.type(alarm_history_key) != 'none':
         history_data = r.lrange(alarm_history_key, 0, -1)
         
         for entry in history_data:
@@ -1417,20 +1430,18 @@ def rate_monitoring() -> Dict[str, Any]:
     anomaly_type_data_json = json.dumps(anomaly_type_counts)
     time_distribution_data_json = json.dumps(time_distribution_data)
     
-    # Return data for template
     return {
         'title': f'Rate Monitoring: {key}',
         'key': key,
         'timerange': timerange,
         'available_keys': available_keys,
-        'recent_samples': samples[-10:] if len(samples) > 10 else samples,
-        'anomalies': anomalies[:20],  # Show only the 20 most recent anomalies
         'summary': summary,
         'rate_chart_data': rate_chart_data_json,
         'anomaly_chart_data': anomaly_chart_data_json,
         'anomaly_type_data': anomaly_type_data_json,
         'time_distribution_data': time_distribution_data_json,
-        'body': ""
+        'anomalies': anomalies[:10],  # Show only the first 10 for the table
+        'total_anomalies': len(anomalies)
     }
 
 #
@@ -1442,13 +1453,13 @@ def rate_monitoring() -> Dict[str, Any]:
 @function_debugging
 def anomaly_summary() -> Dict[str, Any]:
     """
-    Summary of all anomalies across different keys.
+    Summary of all anomalies across all keys.
     """
-    # Get all keys with anomalies
+    # Get all keys that have anomaly history
     keys_with_anomalies = []
     for key in get_monitoring_keys():
         alarm_history_key = f"{key}:alarm-history"
-        if r.type(alarm_history_key) != b'none':
+        if r.type(alarm_history_key) != 'none':
             keys_with_anomalies.append(key)
     
     # Build summary table
@@ -1540,7 +1551,7 @@ def anomaly_detail(key: str, timestamp: str) -> Dict[str, Any]:
     
     # Check alarm history
     alarm_history_key = f"{key}:alarm-history"
-    if r.type(alarm_history_key) != b'none':
+    if r.type(alarm_history_key) != 'none':
         history_data = r.lrange(alarm_history_key, 0, -1)
         
         for entry in history_data:
@@ -1967,81 +1978,204 @@ def delete_maintenance() -> Dict[str, str]:
 def api_get_alerts() -> Dict[str, Any]:
     """API endpoint to get active alerts."""
     try:
-        r = get_redis_client()
-        manager = alert_manager.get_alert_manager(r)
+        # Validate query parameters
+        request_args = dict(bottle.request.query)
+        allowed_params = ['min_level', 'offset', 'limit']
+        is_valid, error_msg, error_code = validate_query_parameters(request_args, allowed_params)
+        if not is_valid:
+            return create_api_response(error=error_msg, code=400, error_code=error_code)
         
-        min_level_str = bottle.request.query.get('min_level', 'warning')
-        min_level = alert_manager.AlertLevel.from_string(min_level_str)
+        # Validate pagination parameters
+        is_valid, error_msg, error_code = validate_pagination_params(request_args)
+        if not is_valid:
+            return create_api_response(error=error_msg, code=400, error_code=error_code)
         
-        alerts = manager.get_active_alerts(min_level=min_level)
-        formatted_alerts = [alert.to_dict() for alert in alerts]
+        # Validate alert level if provided
+        min_level_str = request_args.get('min_level', 'warning')
+        is_valid, error_msg, error_code = validate_alert_level(min_level_str)
+        if not is_valid:
+            return create_api_response(error=error_msg, code=400, error_code=error_code)
+        
+        # Get pagination parameters
+        offset, limit = get_pagination_params(request_args)
+        
+        # Safely get Redis client and execute operation
+        def get_alerts_operation():
+            r = get_redis_client()
+            manager = alert_manager.get_alert_manager(r)
+            min_level = alert_manager.AlertLevel.from_string(min_level_str)
+            alerts = manager.get_active_alerts(min_level=min_level)
+            return alerts
+        
+        success, alerts, error_msg, error_code = safe_redis_operation(
+            get_alerts_operation, "alert retrieval"
+        )
+        if not success:
+            return create_api_response(error=error_msg, code=500, error_code=error_code)
+        
+        # Apply pagination
+        total_count = len(alerts)
+        paginated_alerts = alerts[offset:offset + limit]
+        formatted_alerts = [alert.to_dict() for alert in paginated_alerts]
         
         return create_api_response({
             'alerts': formatted_alerts,
             'count': len(formatted_alerts),
+            'total_count': total_count,
+            'offset': offset,
+            'limit': limit,
             'min_level': min_level_str
         })
     except Exception as e:
-        logger.error(f"Error getting alerts: {e}")
-        return create_api_response(error=f"Alert retrieval error: {str(e)}", code=500)
+        logger.error(f"Unexpected error getting alerts: {e}")
+        return create_api_response(error=f"Alert retrieval error: {str(e)}", code=500, error_code=APIErrorCodes.ALERT_SYSTEM_ERROR)
 
 @bottle.route('/api/alerts/history', method='GET')
 def api_get_alert_history() -> Dict[str, Any]:
     """API endpoint to get alert history."""
     try:
-        r = get_redis_client()
-        manager = alert_manager.get_alert_manager(r)
+        # Validate query parameters
+        request_args = dict(bottle.request.query)
+        allowed_params = ['min_level', 'max', 'offset', 'limit']
+        is_valid, error_msg, error_code = validate_query_parameters(request_args, allowed_params)
+        if not is_valid:
+            return create_api_response(error=error_msg, code=400, error_code=error_code)
         
-        min_level_str = bottle.request.query.get('min_level', 'warning')
-        min_level = alert_manager.AlertLevel.from_string(min_level_str)
+        # Validate pagination parameters
+        is_valid, error_msg, error_code = validate_pagination_params(request_args)
+        if not is_valid:
+            return create_api_response(error=error_msg, code=400, error_code=error_code)
         
-        max_results = int(bottle.request.query.get('max', '100'))
+        # Validate alert level if provided
+        min_level_str = request_args.get('min_level', 'warning')
+        is_valid, error_msg, error_code = validate_alert_level(min_level_str)
+        if not is_valid:
+            return create_api_response(error=error_msg, code=400, error_code=error_code)
         
-        alerts = manager.get_alert_history(min_level=min_level, max_results=max_results)
-        formatted_alerts = [alert.to_dict() for alert in alerts]
+        # Validate max parameter
+        max_results = 100  # Default
+        if 'max' in request_args:
+            try:
+                max_results = int(request_args['max'])
+                if max_results < 1 or max_results > 1000:
+                    return create_api_response(
+                        error="Invalid max parameter: must be between 1 and 1000", 
+                        code=400, 
+                        error_code=APIErrorCodes.INVALID_VALUE
+                    )
+            except ValueError:
+                return create_api_response(
+                    error="Invalid max parameter: must be integer", 
+                    code=400, 
+                    error_code=APIErrorCodes.INVALID_VALUE
+                )
+        
+        # Get pagination parameters
+        offset, limit = get_pagination_params(request_args)
+        
+        # Safely get Redis client and execute operation
+        def get_history_operation():
+            r = get_redis_client()
+            manager = alert_manager.get_alert_manager(r)
+            min_level = alert_manager.AlertLevel.from_string(min_level_str)
+            alerts = manager.get_alert_history(min_level=min_level, max_results=max_results)
+            return alerts
+        
+        success, alerts, error_msg, error_code = safe_redis_operation(
+            get_history_operation, "alert history retrieval"
+        )
+        if not success:
+            return create_api_response(error=error_msg, code=500, error_code=error_code)
+        
+        # Apply pagination
+        total_count = len(alerts)
+        paginated_alerts = alerts[offset:offset + limit]
+        formatted_alerts = [alert.to_dict() for alert in paginated_alerts]
         
         return create_api_response({
             'alerts': formatted_alerts,
             'count': len(formatted_alerts),
+            'total_count': total_count,
+            'offset': offset,
+            'limit': limit,
             'min_level': min_level_str,
             'max_results': max_results
         })
     except Exception as e:
-        logger.error(f"Error getting alert history: {e}")
-        return create_api_response(error=f"Alert history error: {str(e)}", code=500)
+        logger.error(f"Unexpected error getting alert history: {e}")
+        return create_api_response(error=f"Alert history error: {str(e)}", code=500, error_code=APIErrorCodes.ALERT_SYSTEM_ERROR)
 
 @bottle.route('/api/alerts/<uuid>', method='GET')
 def api_get_alert(uuid: str) -> Dict[str, Any]:
     """API endpoint to get a specific alert."""
     try:
-        r = get_redis_client()
-        manager = alert_manager.get_alert_manager(r)
+        # Validate UUID format (basic validation)
+        if not uuid or len(uuid) < 8:
+            return create_api_response(
+                error="Invalid UUID format", 
+                code=400, 
+                error_code=APIErrorCodes.INVALID_VALUE
+            )
         
-        # Try to find the alert in active alerts
-        alert = next((a for a in manager.active_alerts.values() if a.uuid == uuid), None)
+        # Safely get Redis client and execute operation
+        def get_alert_operation():
+            r = get_redis_client()
+            manager = alert_manager.get_alert_manager(r)
+            
+            # Try to find the alert in active alerts
+            alert = next((a for a in manager.active_alerts.values() if a.uuid == uuid), None)
+            
+            # If not found in active alerts, check history
+            if not alert:
+                alert = next((a for a in manager.alert_history if a.uuid == uuid), None)
+            
+            return alert
         
-        # If not found in active alerts, check history
+        success, alert, error_msg, error_code = safe_redis_operation(
+            get_alert_operation, "specific alert retrieval"
+        )
+        if not success:
+            return create_api_response(error=error_msg, code=500, error_code=error_code)
+        
         if not alert:
-            alert = next((a for a in manager.alert_history if a.uuid == uuid), None)
-        
-        if not alert:
-            return create_api_response(error='Alert not found', code=404)
+            return create_api_response(error='Alert not found', code=404, error_code=APIErrorCodes.INVALID_VALUE)
         
         return create_api_response(alert.to_dict())
     except Exception as e:
-        logger.error(f"Error getting alert {uuid}: {e}")
-        return create_api_response(error=f"Alert retrieval error: {str(e)}", code=500)
+        logger.error(f"Unexpected error getting alert {uuid}: {e}")
+        return create_api_response(error=f"Alert retrieval error: {str(e)}", code=500, error_code=APIErrorCodes.ALERT_SYSTEM_ERROR)
 
 @bottle.route('/api/alerts/<uuid>/acknowledge', method='POST')
 def api_acknowledge_alert(uuid: str) -> Dict[str, Any]:
     """API endpoint to acknowledge an alert."""
     try:
-        r = get_redis_client()
-        manager = alert_manager.get_alert_manager(r)
+        # Validate UUID format (basic validation)
+        if not uuid or len(uuid) < 8:
+            return create_api_response(
+                error="Invalid UUID format", 
+                code=400, 
+                error_code=APIErrorCodes.INVALID_VALUE
+            )
         
-        success = manager.acknowledge_alert(uuid)
+        # Safely get Redis client and execute operation
+        def acknowledge_operation():
+            r = get_redis_client()
+            manager = alert_manager.get_alert_manager(r)
+            success = manager.acknowledge_alert(uuid)
+            return success
+        
+        success, ack_result, error_msg, error_code = safe_redis_operation(
+            acknowledge_operation, "alert acknowledgment"
+        )
         if not success:
-            return create_api_response(error='Alert not found', code=404)
+            return create_api_response(error=error_msg, code=500, error_code=error_code)
+        
+        if not ack_result:
+            return create_api_response(
+                error='Alert not found or already acknowledged', 
+                code=404, 
+                error_code=APIErrorCodes.INVALID_VALUE
+            )
         
         return create_api_response({
             'success': True, 
@@ -2049,19 +2183,40 @@ def api_acknowledge_alert(uuid: str) -> Dict[str, Any]:
             'status': 'acknowledged'
         })
     except Exception as e:
-        logger.error(f"Error acknowledging alert {uuid}: {e}")
-        return create_api_response(error=f"Alert acknowledgment error: {str(e)}", code=500)
+        logger.error(f"Unexpected error acknowledging alert {uuid}: {e}")
+        return create_api_response(error=f"Alert acknowledgment error: {str(e)}", code=500, error_code=APIErrorCodes.ALERT_SYSTEM_ERROR)
 
 @bottle.route('/api/alerts/<uuid>/resolve', method='POST')
 def api_resolve_alert(uuid: str) -> Dict[str, Any]:
     """API endpoint to resolve an alert."""
     try:
-        r = get_redis_client()
-        manager = alert_manager.get_alert_manager(r)
+        # Validate UUID format (basic validation)
+        if not uuid or len(uuid) < 8:
+            return create_api_response(
+                error="Invalid UUID format", 
+                code=400, 
+                error_code=APIErrorCodes.INVALID_VALUE
+            )
         
-        success = manager.resolve_alert(uuid)
+        # Safely get Redis client and execute operation
+        def resolve_operation():
+            r = get_redis_client()
+            manager = alert_manager.get_alert_manager(r)
+            success = manager.resolve_alert(uuid)
+            return success
+        
+        success, resolve_result, error_msg, error_code = safe_redis_operation(
+            resolve_operation, "alert resolution"
+        )
         if not success:
-            return create_api_response(error='Alert not found', code=404)
+            return create_api_response(error=error_msg, code=500, error_code=error_code)
+        
+        if not resolve_result:
+            return create_api_response(
+                error='Alert not found or already resolved', 
+                code=404, 
+                error_code=APIErrorCodes.INVALID_VALUE
+            )
         
         return create_api_response({
             'success': True, 
@@ -2069,8 +2224,8 @@ def api_resolve_alert(uuid: str) -> Dict[str, Any]:
             'status': 'resolved'
         })
     except Exception as e:
-        logger.error(f"Error resolving alert {uuid}: {e}")
-        return create_api_response(error=f"Alert resolution error: {str(e)}", code=500)
+        logger.error(f"Unexpected error resolving alert {uuid}: {e}")
+        return create_api_response(error=f"Alert resolution error: {str(e)}", code=500, error_code=APIErrorCodes.ALERT_SYSTEM_ERROR)
 
 @bottle.route('/extended_metrics')
 @bottle.view('extended_metrics')
@@ -2106,23 +2261,71 @@ def extended_metrics_dashboard():
 def api_extended_metrics():
     """API endpoint for extended metrics data."""
     try:
-        # Get request parameters
-        key = bottle.request.query.get('key')
-        metric_type = bottle.request.query.get('type') or 'count'
-        interval = bottle.request.query.get('interval') or 's'
+        # Validate query parameters
+        request_args = dict(bottle.request.query)
+        allowed_params = ['key', 'type', 'interval', 'limit']
+        required_params = ['key']
+        is_valid, error_msg, error_code = validate_query_parameters(request_args, allowed_params, required_params)
+        if not is_valid:
+            return create_api_response(error=error_msg, code=400, error_code=error_code)
         
-        # Validate parameters
-        if not key:
-            return create_api_response(error='Missing metric key parameter', code=400)
+        # Get and validate parameters
+        key = request_args['key']
+        metric_type = request_args.get('type', 'count')
+        interval = request_args.get('interval', 's')
         
-        # Get redis connection
-        redis_client = get_redis_client()
+        # Validate metric type
+        valid_metric_types = ['count', 'size', 'protocol', 'error_rate', 'response_time', 'connection']
+        if metric_type not in valid_metric_types:
+            return create_api_response(
+                error=f"Invalid metric type. Must be one of: {', '.join(valid_metric_types)}", 
+                code=400, 
+                error_code=APIErrorCodes.INVALID_VALUE
+            )
         
-        # Build Redis key
-        redis_key = f"{key}:{metric_type}:{interval}"
+        # Validate interval
+        valid_intervals = ['s', 'm', 'h']
+        if interval not in valid_intervals:
+            return create_api_response(
+                error=f"Invalid interval. Must be one of: {', '.join(valid_intervals)}", 
+                code=400, 
+                error_code=APIErrorCodes.INVALID_VALUE
+            )
         
-        # Get time series data
-        raw_data = redis_client.lrange(redis_key, 0, 1000)
+        # Validate limit parameter
+        limit = 1000  # Default
+        if 'limit' in request_args:
+            try:
+                limit = int(request_args['limit'])
+                if limit < 1 or limit > 10000:
+                    return create_api_response(
+                        error="Invalid limit: must be between 1 and 10000", 
+                        code=400, 
+                        error_code=APIErrorCodes.INVALID_VALUE
+                    )
+            except ValueError:
+                return create_api_response(
+                    error="Invalid limit: must be integer", 
+                    code=400, 
+                    error_code=APIErrorCodes.INVALID_VALUE
+                )
+        
+        # Safely get Redis client and execute operation
+        def get_metrics_operation():
+            redis_client = get_redis_client()
+            
+            # Build Redis key
+            redis_key = f"{key}:{metric_type}:{interval}"
+            
+            # Get time series data
+            raw_data = redis_client.lrange(redis_key, 0, limit)
+            return raw_data, redis_key
+        
+        success, (raw_data, redis_key), error_msg, error_code = safe_redis_operation(
+            get_metrics_operation, "extended metrics retrieval"
+        )
+        if not success:
+            return create_api_response(error=error_msg, code=500, error_code=error_code)
         
         # Process the data
         time_series = []
@@ -2167,14 +2370,16 @@ def api_extended_metrics():
             'key': key,
             'metric_type': metric_type,
             'interval': interval,
+            'redis_key': redis_key,
             'time_series': time_series,
             'current': current,
             'statistics': statistics,
-            'thresholds': thresholds
+            'thresholds': thresholds,
+            'data_points': len(time_series)
         })
     except Exception as e:
-        logger.error(f"Error retrieving extended metrics: {e}")
-        return create_api_response(error=f"Extended metrics error: {str(e)}", code=500)
+        logger.error(f"Unexpected error retrieving extended metrics: {e}")
+        return create_api_response(error=f"Extended metrics error: {str(e)}", code=500, error_code=APIErrorCodes.METRICS_SYSTEM_ERROR)
 
 @bottle.route('/api/metrics/:key')
 def api_metrics(key: str) -> Dict[str, Any]:
@@ -2276,9 +2481,154 @@ def api_metrics_list() -> Dict[str, Any]:
 # REST API Enhancement - Standardized Response System
 #
 
+# Standard API Error Codes
+class APIErrorCodes:
+    """Standardized API error codes for consistent error reporting."""
+    
+    # Client Errors (400-499)
+    INVALID_PARAMETER = 4001
+    MISSING_PARAMETER = 4002
+    INVALID_VALUE = 4003
+    INVALID_TIME_RANGE = 4004
+    INVALID_PAGINATION = 4005
+    AUTHENTICATION_REQUIRED = 4010
+    INSUFFICIENT_PERMISSIONS = 4011
+    RATE_LIMIT_EXCEEDED = 4012
+    
+    # Server Errors (500-599)
+    REDIS_CONNECTION_ERROR = 5001
+    DATA_PROCESSING_ERROR = 5002
+    ANOMALY_DETECTION_ERROR = 5003
+    ALERT_SYSTEM_ERROR = 5004
+    METRICS_SYSTEM_ERROR = 5005
+    INTERNAL_ERROR = 5000
+
+def validate_query_parameters(request_args: Dict[str, str], 
+                             allowed_params: List[str], 
+                             required_params: Optional[List[str]] = None) -> Tuple[bool, Optional[str], Optional[int]]:
+    """
+    Validate query parameters against allowed and required lists.
+    
+    Args:
+        request_args: Dictionary of request parameters
+        allowed_params: List of allowed parameter names
+        required_params: List of required parameter names
+        
+    Returns:
+        Tuple of (is_valid, error_message, error_code)
+    """
+    if required_params:
+        for param in required_params:
+            if param not in request_args:
+                return False, f"Missing required parameter: {param}", APIErrorCodes.MISSING_PARAMETER
+    
+    for param in request_args:
+        if param not in allowed_params:
+            return False, f"Invalid parameter: {param}", APIErrorCodes.INVALID_PARAMETER
+    
+    return True, None, None
+
+def validate_time_range_params(request_args: Dict[str, str]) -> Tuple[bool, Optional[str], Optional[int]]:
+    """
+    Validate time range parameters.
+    
+    Args:
+        request_args: Dictionary of request parameters
+        
+    Returns:
+        Tuple of (is_valid, error_message, error_code)
+    """
+    # Check for valid range values
+    if 'range' in request_args:
+        valid_ranges = ['1h', '6h', '24h', '7d', '30d']
+        if request_args['range'] not in valid_ranges:
+            return False, f"Invalid time range. Must be one of: {', '.join(valid_ranges)}", APIErrorCodes.INVALID_TIME_RANGE
+    
+    # Validate start/end timestamps
+    for param in ['start', 'end']:
+        if param in request_args:
+            try:
+                timestamp = int(request_args[param])
+                # Basic sanity check: timestamp should be reasonable (after 2000-01-01 and before 2100-01-01)
+                if timestamp < 946684800 or timestamp > 4102444800:
+                    return False, f"Invalid {param} timestamp: must be valid Unix timestamp", APIErrorCodes.INVALID_TIME_RANGE
+            except ValueError:
+                return False, f"Invalid {param} parameter: must be integer timestamp", APIErrorCodes.INVALID_VALUE
+    
+    # Validate that start is before end
+    if 'start' in request_args and 'end' in request_args:
+        try:
+            start = int(request_args['start'])
+            end = int(request_args['end'])
+            if start >= end:
+                return False, "Start time must be before end time", APIErrorCodes.INVALID_TIME_RANGE
+        except ValueError:
+            pass  # Already handled above
+    
+    return True, None, None
+
+def validate_pagination_params(request_args: Dict[str, str]) -> Tuple[bool, Optional[str], Optional[int]]:
+    """
+    Validate pagination parameters.
+    
+    Args:
+        request_args: Dictionary of request parameters
+        
+    Returns:
+        Tuple of (is_valid, error_message, error_code)
+    """
+    for param in ['offset', 'limit']:
+        if param in request_args:
+            try:
+                value = int(request_args[param])
+                if value < 0:
+                    return False, f"Invalid {param}: must be non-negative integer", APIErrorCodes.INVALID_PAGINATION
+                if param == 'limit' and value > 1000:
+                    return False, "Invalid limit: maximum value is 1000", APIErrorCodes.INVALID_PAGINATION
+            except ValueError:
+                return False, f"Invalid {param}: must be integer", APIErrorCodes.INVALID_VALUE
+    
+    return True, None, None
+
+def validate_alert_level(level: str) -> Tuple[bool, Optional[str], Optional[int]]:
+    """
+    Validate alert level parameter.
+    
+    Args:
+        level: Alert level string
+        
+    Returns:
+        Tuple of (is_valid, error_message, error_code)
+    """
+    valid_levels = ['info', 'warning', 'error', 'critical']
+    if level not in valid_levels:
+        return False, f"Invalid alert level. Must be one of: {', '.join(valid_levels)}", APIErrorCodes.INVALID_VALUE
+    return True, None, None
+
+def safe_redis_operation(operation: Callable, error_context: str) -> Tuple[bool, Any, Optional[str], Optional[int]]:
+    """
+    Safely execute a Redis operation with proper error handling.
+    
+    Args:
+        operation: Function to execute
+        error_context: Context description for error reporting
+        
+    Returns:
+        Tuple of (success, result, error_message, error_code)
+    """
+    try:
+        result = operation()
+        return True, result, None, None
+    except redis.ConnectionError as e:
+        logger.error(f"Redis connection error in {error_context}: {e}")
+        return False, None, f"Database connection error in {error_context}", APIErrorCodes.REDIS_CONNECTION_ERROR
+    except Exception as e:
+        logger.error(f"Unexpected error in {error_context}: {e}")
+        return False, None, f"Internal error in {error_context}: {str(e)}", APIErrorCodes.INTERNAL_ERROR
+
 def create_api_response(data: Any = None, error: Optional[str] = None, 
                        status: str = 'success', code: int = 200,
-                       version: str = __version__) -> Dict[str, Any]:
+                       version: str = __version__, error_code: Optional[int] = None) -> Dict[str, Any]:
     """
     Create a standardized API response format.
     
@@ -2288,6 +2638,7 @@ def create_api_response(data: Any = None, error: Optional[str] = None,
         status: Response status ('success', 'error', 'warning')
         code: HTTP status code
         version: API version
+        error_code: Custom API error code for structured error handling
         
     Returns:
         Standardized response dictionary
@@ -2302,6 +2653,8 @@ def create_api_response(data: Any = None, error: Optional[str] = None,
     if error:
         response['error'] = error
         response['status'] = 'error'
+        if error_code:
+            response['error_code'] = error_code
     else:
         response['data'] = data
     
@@ -2388,14 +2741,265 @@ def get_pagination_params(request_args: Dict[str, str]) -> Tuple[int, int]:
     return offset, limit
 
 #
+# API Versioning Utilities
+#
+
+def get_api_version_from_request() -> str:
+    """
+    Determine API version from request URL or headers.
+    
+    Returns:
+        API version string (e.g., 'v1', 'v2')
+    """
+    # Check URL path for version
+    path = bottle.request.environ.get('PATH_INFO', '')
+    if '/api/v' in path:
+        # Extract version from URL like /api/v1/status
+        parts = path.split('/')
+        for part in parts:
+            if part.startswith('v') and part[1:].isdigit():
+                version = part
+                if version in API_VERSIONS:
+                    return version
+    
+    # Check Accept header for version preference
+    accept_header = bottle.request.environ.get('HTTP_ACCEPT', '')
+    if 'application/vnd.bacmon.v' in accept_header:
+        # Extract version from Accept header like application/vnd.bacmon.v2+json
+        import re
+        match = re.search(r'application/vnd\.bacmon\.v(\d+)', accept_header)
+        if match:
+            version = f'v{match.group(1)}'
+            if version in API_VERSIONS:
+                return version
+    
+    # Default to v1 for backward compatibility
+    return DEFAULT_API_VERSION
+
+def validate_api_version(version: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate if the requested API version is supported.
+    
+    Args:
+        version: API version string
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if version not in API_VERSIONS:
+        return False, f"API version '{version}' is not supported. Available versions: {list(API_VERSIONS.keys())}"
+    
+    version_info = API_VERSIONS[version]
+    if not version_info['supported']:
+        return False, f"API version '{version}' is no longer supported"
+    
+    return True, None
+
+def create_versioned_api_response(data: Any = None, error: Optional[str] = None, 
+                                status: str = 'success', code: int = 200,
+                                api_version: Optional[str] = None, error_code: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Create a version-aware API response with enhanced features based on API version.
+    
+    Args:
+        data: The response data payload
+        error: Error message if applicable
+        status: Response status ('success', 'error', 'warning')
+        code: HTTP status code
+        api_version: API version for version-specific formatting
+        error_code: Custom API error code for structured error handling
+        
+    Returns:
+        Version-aware response dictionary
+    """
+    if not api_version:
+        api_version = get_api_version_from_request()
+    
+    # Validate API version
+    is_valid, error_msg = validate_api_version(api_version)
+    if not is_valid:
+        return create_api_response(error=error_msg, code=400, error_code=APIErrorCodes.INVALID_PARAMETER)
+    
+    version_info = API_VERSIONS[api_version]
+    
+    # Base response structure
+    response = {
+        'status': status,
+        'timestamp': int(_time()),
+        'api_version': api_version,
+        'version': version_info['version'],
+        'code': code
+    }
+    
+    # Add version-specific features
+    if api_version == 'v2':
+        # Enhanced v2 features
+        response['features'] = version_info['features']
+        response['request_id'] = f"req_{int(_time() * 1000)}"  # Request tracking
+        
+        # Enhanced error handling for v2
+        if error:
+            response['error'] = {
+                'message': error,
+                'code': error_code,
+                'timestamp': response['timestamp']
+            }
+            response['status'] = 'error'
+        else:
+            response['data'] = data
+            # Add metadata for v2
+            if isinstance(data, dict) and 'items' in data:
+                response['metadata'] = {
+                    'total_items': len(data.get('items', [])),
+                    'response_time_ms': 0  # Could be calculated
+                }
+    else:
+        # v1 compatibility - use existing format
+        if error:
+            response['error'] = error
+            response['status'] = 'error'
+            if error_code:
+                response['error_code'] = error_code
+        else:
+            response['data'] = data
+    
+    # Set deprecation warning if applicable
+    if version_info.get('deprecated'):
+        response['warning'] = f"API version {api_version} is deprecated. Please migrate to a newer version."
+    
+    bottle.response.status = code
+    bottle.response.content_type = 'application/json'
+    
+    # Add version-specific headers
+    bottle.response.headers['X-API-Version'] = api_version
+    bottle.response.headers['X-API-Features'] = ','.join(version_info['features'])
+    
+    return response
+
+def versioned_route(path: str, method: str = 'GET', versions: Optional[List[str]] = None):
+    """
+    Decorator to create versioned API routes.
+    
+    Args:
+        path: Base API path (without version prefix)
+        method: HTTP method
+        versions: List of supported versions (defaults to all)
+        
+    Returns:
+        Decorator function
+    """
+    if versions is None:
+        versions = list(API_VERSIONS.keys())
+    
+    def decorator(func):
+        # Create routes for each version
+        for version in versions:
+            versioned_path = f'/api/{version}{path}'
+            bottle.route(versioned_path, method=method)(func)
+        
+        # Create backward-compatible route (defaults to v1)
+        if 'v1' in versions:
+            backward_path = f'/api{path}'
+            bottle.route(backward_path, method=method)(func)
+        
+        return func
+    
+    return decorator
+
+def get_data_access_mode(request_args: Dict[str, str], api_version: str) -> str:
+    """
+    Determine data access mode based on request parameters and API version.
+    
+    Args:
+        request_args: Request query parameters
+        api_version: API version
+        
+    Returns:
+        Data access mode ('realtime', 'historical', 'streaming')
+    """
+    # Check for explicit mode parameter
+    mode = request_args.get('mode', '').lower()
+    if mode in ['realtime', 'historical', 'streaming']:
+        # Streaming only available in v2+
+        if mode == 'streaming' and api_version == 'v1':
+            return 'realtime'
+        return mode
+    
+    # Auto-detect based on time parameters
+    if 'start' in request_args or 'end' in request_args or 'range' in request_args:
+        return 'historical'
+    
+    # Default to realtime
+    return 'realtime'
+
+#
 # Enhanced Core API Endpoints
 #
 
+@versioned_route('/info', method='GET')
+@require_auth('read')
+def api_version_info() -> Dict[str, Any]:
+    """API endpoint to get version information and capabilities."""
+    try:
+        api_version = get_api_version_from_request()
+        
+        # Validate version
+        is_valid, error_msg = validate_api_version(api_version)
+        if not is_valid:
+            return create_versioned_api_response(error=error_msg, code=400, error_code=APIErrorCodes.INVALID_PARAMETER)
+        
+        version_info = API_VERSIONS[api_version]
+        
+        # Compile API information
+        api_info = {
+            'current_version': api_version,
+            'version_details': version_info,
+            'available_versions': API_VERSIONS,
+            'endpoints': {
+                'status': f'/api/{api_version}/status',
+                'monitoring': f'/api/{api_version}/monitoring',
+                'traffic': f'/api/{api_version}/traffic',
+                'devices': f'/api/{api_version}/devices',
+                'anomalies': f'/api/{api_version}/anomalies',
+                'alerts': f'/api/{api_version}/alerts',
+                'metrics': f'/api/{api_version}/metrics',
+                'export': f'/api/{api_version}/export'
+            },
+            'features': {
+                'authentication': 'basic_auth' in version_info['features'],
+                'pagination': 'pagination' in version_info['features'],
+                'error_codes': 'error_codes' in version_info['features'],
+                'streaming': 'streaming' in version_info['features'],
+                'enhanced_filtering': 'enhanced_filtering' in version_info['features'],
+                'data_aggregation': 'data_aggregation' in version_info['features']
+            }
+        }
+        
+        # Add version-specific information
+        if api_version == 'v2':
+            api_info['v2_enhancements'] = {
+                'streaming_endpoints': [
+                    f'/api/{api_version}/monitoring/stream',
+                    f'/api/{api_version}/alerts/stream'
+                ],
+                'aggregation_functions': ['avg', 'sum', 'min', 'max', 'count'],
+                'enhanced_filters': ['regex', 'range', 'contains', 'startswith', 'endswith'],
+                'data_formats': ['json', 'csv', 'xml', 'msgpack']
+            }
+        
+        return create_versioned_api_response(api_info, api_version=api_version)
+    
+    except Exception as e:
+        return create_versioned_api_response(error=f"API info error: {str(e)}", code=500, error_code=APIErrorCodes.INTERNAL_ERROR)
+
 @bottle.route('/api/status', method='GET')
+@versioned_route('/status', method='GET')
 @require_auth('read')
 def api_system_status() -> Dict[str, Any]:
     """API endpoint to get system status and health information."""
     try:
+        api_version = get_api_version_from_request()
+        
         # Get Redis client
         redis_client = get_redis_client()
         
@@ -2449,11 +3053,22 @@ def api_system_status() -> Dict[str, Any]:
             }
         }
         
-        return create_api_response(status_data)
+        # Add version-specific enhancements
+        if api_version == 'v2':
+            # Enhanced v2 status information
+            status_data['api_info'] = {
+                'version': api_version,
+                'features_enabled': API_VERSIONS[api_version]['features']
+            }
+            status_data['performance'] = {
+                'uptime_seconds': int(_time()) - int(system_info.get('startup_time', _time())),
+                'memory_usage_mb': redis_info.get('memory_usage', 0) / (1024 * 1024) if redis_info.get('memory_usage') else 0
+            }
+        
+        return create_versioned_api_response(status_data, api_version=api_version)
     
     except Exception as e:
-        logger.error(f"Error getting system status: {e}")
-        return create_api_response(error=f"System status error: {str(e)}", code=500)
+        return create_versioned_api_response(error=f"System status error: {str(e)}", code=500, error_code=APIErrorCodes.INTERNAL_ERROR, api_version=get_api_version_from_request())
 
 @bottle.route('/api/monitoring', method='GET')
 @require_auth('read')
@@ -2506,24 +3121,98 @@ def api_monitoring_data() -> Dict[str, Any]:
                     'samples': []
                 }
         
-        response_data = {
-            'keys': list(monitoring_data.keys()),
-            'total_available': len(all_keys),
-            'interval': interval,
-            'data': monitoring_data
-        }
-        
-        if start_time or end_time:
-            response_data['time_range'] = {
-                'start': start_time,
-                'end': end_time
-            }
-        
-        return create_api_response(response_data)
+        return create_api_response(monitoring_data)
     
     except Exception as e:
-        logger.error(f"Error getting monitoring data: {e}")
         return create_api_response(error=f"Monitoring data error: {str(e)}", code=500)
+
+@versioned_route('/monitoring/stream', method='GET', versions=['v2'])
+@require_auth('read')
+def api_monitoring_stream() -> Any:
+    """API endpoint for real-time streaming monitoring data (v2 only)."""
+    try:
+        api_version = get_api_version_from_request()
+        
+        # Validate this is v2 API
+        if api_version != 'v2':
+            return create_versioned_api_response(
+                error="Streaming is only available in API v2", 
+                code=400, 
+                error_code=APIErrorCodes.INVALID_PARAMETER,
+                api_version=api_version
+            )
+        
+        # Set up Server-Sent Events headers
+        bottle.response.content_type = 'text/event-stream'
+        bottle.response.headers['Cache-Control'] = 'no-cache'
+        bottle.response.headers['Connection'] = 'keep-alive'
+        bottle.response.headers['Access-Control-Allow-Origin'] = '*'
+        bottle.response.headers['X-API-Version'] = api_version
+        
+        def generate_stream():
+            """Generator function for streaming data."""
+            import time
+            import json
+            
+            # Get request parameters
+            request_args = dict(bottle.request.query)
+            keys_filter = request_args.get('keys', '').split(',') if request_args.get('keys') else None
+            interval = max(1, int(request_args.get('interval', '5')))  # Minimum 1 second
+            
+            # Get monitoring keys
+            all_keys = get_monitoring_keys()
+            if keys_filter:
+                keys = [key for key in all_keys if any(f in key for f in keys_filter if f)]
+            else:
+                keys = all_keys[:10]  # Limit to first 10 keys for streaming
+            
+            try:
+                while True:
+                    # Collect current monitoring data
+                    stream_data = {
+                        'timestamp': int(_time()),
+                        'keys': {}
+                    }
+                    
+                    redis_client = get_redis_client()
+                    for key in keys:
+                        try:
+                            current_value = redis_client.get(key)
+                            if current_value:
+                                stream_data['keys'][key] = {
+                                    'value': current_value.decode('utf-8') if isinstance(current_value, bytes) else current_value,
+                                    'timestamp': int(_time())
+                                }
+                        except Exception:
+                            continue
+                    
+                    # Format as Server-Sent Event
+                    event_data = json.dumps(stream_data)
+                    yield f"data: {event_data}\n\n"
+                    
+                    # Wait for next interval
+                    time.sleep(interval)
+                    
+            except GeneratorExit:
+                # Client disconnected
+                pass
+            except Exception as e:
+                # Send error event
+                error_data = json.dumps({
+                    'error': str(e),
+                    'timestamp': int(_time())
+                })
+                yield f"event: error\ndata: {error_data}\n\n"
+        
+        return generate_stream()
+    
+    except Exception as e:
+        return create_versioned_api_response(
+            error=f"Streaming error: {str(e)}", 
+            code=500, 
+            error_code=APIErrorCodes.INTERNAL_ERROR,
+            api_version=get_api_version_from_request()
+        )
 
 @bottle.route('/api/traffic', method='GET')
 @require_auth('read')
@@ -3036,6 +3725,260 @@ def extended_metrics(key: str) -> Dict[str, Any]:
         bottle.abort(404, f"Metric key '{key}' not found")
     
     return {'key': key}
+
+@versioned_route('/alerts/stream', method='GET', versions=['v2'])
+@require_auth('read')
+def api_alerts_stream() -> Any:
+    """API endpoint for real-time streaming alert data (v2 only)."""
+    try:
+        api_version = get_api_version_from_request()
+        
+        # Validate this is v2 API
+        if api_version != 'v2':
+            return create_versioned_api_response(
+                error="Streaming is only available in API v2", 
+                code=400, 
+                error_code=APIErrorCodes.INVALID_PARAMETER,
+                api_version=api_version
+            )
+        
+        # Set up Server-Sent Events headers
+        bottle.response.content_type = 'text/event-stream'
+        bottle.response.headers['Cache-Control'] = 'no-cache'
+        bottle.response.headers['Connection'] = 'keep-alive'
+        bottle.response.headers['Access-Control-Allow-Origin'] = '*'
+        bottle.response.headers['X-API-Version'] = api_version
+        
+        def generate_alert_stream():
+            """Generator function for streaming alert data."""
+            import time
+            import json
+            
+            # Get request parameters
+            request_args = dict(bottle.request.query)
+            interval = max(1, int(request_args.get('interval', '10')))  # Minimum 1 second, default 10
+            
+            last_alert_count = 0
+            
+            try:
+                while True:
+                    # Get current alerts
+                    redis_client = get_redis_client()
+                    manager = alert_manager.get_alert_manager(redis_client)
+                    active_alerts = manager.get_active_alerts()
+                    
+                    # Check if alert count changed
+                    current_count = len(active_alerts)
+                    if current_count != last_alert_count:
+                        stream_data = {
+                            'timestamp': int(_time()),
+                            'alert_count': current_count,
+                            'alerts': active_alerts[:5],  # Send first 5 alerts
+                            'count_changed': True
+                        }
+                        last_alert_count = current_count
+                    else:
+                        # Send heartbeat
+                        stream_data = {
+                            'timestamp': int(_time()),
+                            'alert_count': current_count,
+                            'count_changed': False,
+                            'heartbeat': True
+                        }
+                    
+                    # Format as Server-Sent Event
+                    event_data = json.dumps(stream_data)
+                    yield f"data: {event_data}\n\n"
+                    
+                    # Wait for next interval
+                    time.sleep(interval)
+                    
+            except GeneratorExit:
+                # Client disconnected
+                pass
+            except Exception as e:
+                # Send error event
+                error_data = json.dumps({
+                    'error': str(e),
+                    'timestamp': int(_time())
+                })
+                yield f"event: error\ndata: {error_data}\n\n"
+        
+        return generate_alert_stream()
+    
+    except Exception as e:
+        return create_versioned_api_response(
+            error=f"Alert streaming error: {str(e)}", 
+            code=500, 
+            error_code=APIErrorCodes.INTERNAL_ERROR,
+            api_version=get_api_version_from_request()
+        )
+
+@versioned_route('/data/aggregate', method='GET', versions=['v2'])
+@require_auth('read')
+def api_data_aggregation() -> Dict[str, Any]:
+    """API endpoint for data aggregation and statistical analysis (v2 only)."""
+    try:
+        api_version = get_api_version_from_request()
+        
+        # Validate this is v2 API
+        if api_version != 'v2':
+            return create_versioned_api_response(
+                error="Data aggregation is only available in API v2", 
+                code=400, 
+                error_code=APIErrorCodes.INVALID_PARAMETER,
+                api_version=api_version
+            )
+        
+        # Get request parameters
+        request_args = dict(bottle.request.query)
+        
+        # Validate required parameters
+        is_valid, error_msg, error_code = validate_query_parameters(
+            request_args, 
+            allowed_params=['keys', 'function', 'interval', 'start', 'end', 'range', 'group_by'],
+            required_params=['keys', 'function']
+        )
+        if not is_valid:
+            return create_versioned_api_response(error=error_msg, code=400, error_code=error_code, api_version=api_version)
+        
+        keys = request_args['keys'].split(',')
+        agg_function = request_args['function'].lower()
+        interval = request_args.get('interval', '1h')
+        group_by = request_args.get('group_by', 'time')
+        
+        # Validate aggregation function
+        valid_functions = ['avg', 'sum', 'min', 'max', 'count', 'stddev', 'median']
+        if agg_function not in valid_functions:
+            return create_versioned_api_response(
+                error=f"Invalid aggregation function. Supported: {valid_functions}", 
+                code=400, 
+                error_code=APIErrorCodes.INVALID_VALUE,
+                api_version=api_version
+            )
+        
+        # Parse time range
+        start_time, end_time = parse_time_range(request_args)
+        if not start_time or not end_time:
+            # Default to last 24 hours
+            end_time = int(_time())
+            start_time = end_time - 86400
+        
+        # Get Redis client
+        redis_client = get_redis_client()
+        
+        # Collect and aggregate data
+        aggregated_data = {}
+        
+        for key in keys:
+            try:
+                # Get time series data for the key
+                samples = get_key_samples(key, start_time, end_time)
+                
+                if not samples:
+                    aggregated_data[key] = {
+                        'function': agg_function,
+                        'result': None,
+                        'sample_count': 0,
+                        'error': 'No data available'
+                    }
+                    continue
+                
+                # Extract values for aggregation
+                values = []
+                for sample in samples:
+                    try:
+                        if isinstance(sample, dict) and 'value' in sample:
+                            val = float(sample['value'])
+                            values.append(val)
+                        elif isinstance(sample, (int, float)):
+                            values.append(float(sample))
+                    except (ValueError, TypeError):
+                        continue
+                
+                if not values:
+                    aggregated_data[key] = {
+                        'function': agg_function,
+                        'result': None,
+                        'sample_count': 0,
+                        'error': 'No numeric data available'
+                    }
+                    continue
+                
+                # Perform aggregation
+                result = None
+                if agg_function == 'avg':
+                    result = sum(values) / len(values)
+                elif agg_function == 'sum':
+                    result = sum(values)
+                elif agg_function == 'min':
+                    result = min(values)
+                elif agg_function == 'max':
+                    result = max(values)
+                elif agg_function == 'count':
+                    result = len(values)
+                elif agg_function == 'median':
+                    sorted_values = sorted(values)
+                    n = len(sorted_values)
+                    if n % 2 == 0:
+                        result = (sorted_values[n//2 - 1] + sorted_values[n//2]) / 2
+                    else:
+                        result = sorted_values[n//2]
+                elif agg_function == 'stddev':
+                    if len(values) > 1:
+                        mean = sum(values) / len(values)
+                        variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
+                        result = variance ** 0.5
+                    else:
+                        result = 0
+                
+                aggregated_data[key] = {
+                    'function': agg_function,
+                    'result': result,
+                    'sample_count': len(values),
+                    'time_range': {
+                        'start': start_time,
+                        'end': end_time,
+                        'duration_seconds': end_time - start_time
+                    }
+                }
+                
+            except Exception as e:
+                aggregated_data[key] = {
+                    'function': agg_function,
+                    'result': None,
+                    'sample_count': 0,
+                    'error': str(e)
+                }
+        
+        # Compile response
+        response_data = {
+            'aggregation': {
+                'function': agg_function,
+                'interval': interval,
+                'group_by': group_by,
+                'time_range': {
+                    'start': start_time,
+                    'end': end_time
+                }
+            },
+            'results': aggregated_data,
+            'summary': {
+                'total_keys': len(keys),
+                'successful_aggregations': len([k for k, v in aggregated_data.items() if v['result'] is not None]),
+                'total_samples': sum(v['sample_count'] for v in aggregated_data.values())
+            }
+        }
+        
+        return create_versioned_api_response(response_data, api_version=api_version)
+    
+    except Exception as e:
+        return create_versioned_api_response(
+            error=f"Data aggregation error: {str(e)}", 
+            code=500, 
+            error_code=APIErrorCodes.DATA_PROCESSING_ERROR,
+            api_version=get_api_version_from_request()
+        )
 
 #
 #   __main__

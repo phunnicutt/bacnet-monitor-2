@@ -27,9 +27,9 @@ if [ ! -z "$CONTAINER_ID" ]; then
   docker rm bacmon-test
 fi
 
-# Run the container in detached mode
+# Run the container in detached mode with different port to avoid conflicts
 echo -e "\n${YELLOW}Starting container...${NC}"
-docker run -d --name bacmon-test -p 6379:6379 -p 47808:47808/udp bacmon:latest
+docker run -d --name bacmon-test -p 6380:6379 -p 47809:47808/udp bacmon:latest
 if [ $? -eq 0 ]; then
   echo -e "${GREEN}✓ Container started successfully${NC}"
 else

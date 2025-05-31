@@ -76,8 +76,32 @@ def get_console_logging() -> Any:
 def get_core() -> Tuple[Callable, Any]:
     """Import and return core components from the appropriate library."""
     if USE_BACPYPES3:
-        from bacpypes3.core import run, deferred
-        return run, deferred
+        # bacpypes3 uses asyncio instead of a custom core module
+        # We'll provide a compatibility shim for the run function
+        import asyncio
+        
+        def run_wrapper():
+            """Wrapper for asyncio.run to mimic bacpypes run behavior."""
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If already running, just return
+                    return
+                else:
+                    loop.run_forever()
+            except RuntimeError:
+                # No event loop, create one
+                asyncio.run(asyncio.Event().wait())
+        
+        def deferred_wrapper(func, *args, **kwargs):
+            """Wrapper for deferred execution in asyncio."""
+            if asyncio.iscoroutinefunction(func):
+                return asyncio.create_task(func(*args, **kwargs))
+            else:
+                loop = asyncio.get_event_loop()
+                return loop.call_soon(func, *args, **kwargs)
+        
+        return run_wrapper, deferred_wrapper
     else:
         from bacpypes.core import run, deferred
         return run, deferred
@@ -85,8 +109,45 @@ def get_core() -> Tuple[Callable, Any]:
 def get_task() -> Any:
     """Import and return task components from the appropriate library."""
     if USE_BACPYPES3:
-        from bacpypes3.task import RecurringTask
-        return RecurringTask
+        # bacpypes3 doesn't have a traditional task module
+        # We'll create a compatibility wrapper around asyncio
+        import asyncio
+        
+        class RecurringTaskWrapper:
+            """Wrapper to mimic bacpypes RecurringTask using asyncio."""
+            def __init__(self, interval):
+                self.interval = interval
+                self._task = None
+                self._running = False
+            
+            async def _run_task(self, coro):
+                """Internal async task runner."""
+                while self._running:
+                    try:
+                        if asyncio.iscoroutinefunction(coro):
+                            await coro()
+                        else:
+                            coro()
+                        await asyncio.sleep(self.interval)
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        print(f"RecurringTask error: {e}")
+                        await asyncio.sleep(self.interval)
+            
+            def install_task(self, coro):
+                """Start the recurring task."""
+                if not self._running:
+                    self._running = True
+                    self._task = asyncio.create_task(self._run_task(coro))
+            
+            def suspend_task(self):
+                """Stop the recurring task."""
+                self._running = False
+                if self._task:
+                    self._task.cancel()
+        
+        return RecurringTaskWrapper
     else:
         from bacpypes.task import RecurringTask
         return RecurringTask
@@ -122,19 +183,13 @@ def get_pdu() -> Tuple[Any, Any]:
 def get_bvll() -> Tuple[Any, Dict[int, Any], Any, Any, Any, Any, Any, Any]:
     """Import and return BVLL components from the appropriate library."""
     if USE_BACPYPES3:
-        from bacpypes3.bvll import BVLPDU, RegisterForeignDevice, DeleteForeignDeviceTableEntry
-        from bacpypes3.bvll import OriginalUnicastNPDU, OriginalBroadcastNPDU, ForwardedNPDU
-        from bacpypes3.bvll import DistributeBroadcastToNetwork
+        from bacpypes3.ipv4.bvll import RegisterForeignDevice, DeleteForeignDeviceTableEntry
+        from bacpypes3.ipv4.bvll import OriginalUnicastNPDU, OriginalBroadcastNPDU, ForwardedNPDU
+        from bacpypes3.ipv4.bvll import DistributeBroadcastToNetwork, pdu_types
+        from bacpypes3.pdu import PDU as BVLPDU  # Use base PDU class as BVLPDU equivalent
         
-        # In bacpypes3, we need to manually create the bvl_pdu_types dictionary
-        bvl_pdu_types: Dict[int, Any] = {
-            0x00: OriginalUnicastNPDU,
-            0x01: OriginalBroadcastNPDU,
-            0x02: ForwardedNPDU,
-            0x03: RegisterForeignDevice,
-            0x04: DeleteForeignDeviceTableEntry,
-            0x05: DistributeBroadcastToNetwork,
-        }
+        # Use the pdu_types from bacpypes3.ipv4.bvll
+        bvl_pdu_types: Dict[int, Any] = pdu_types
         
         return (BVLPDU, bvl_pdu_types, RegisterForeignDevice, 
                 DeleteForeignDeviceTableEntry, OriginalUnicastNPDU, 

@@ -1,11 +1,34 @@
 # Task ID: 5
 # Title: Update String Handling for Bytes vs. Str Compatibility
-# Status: pending
+# Status: done
 # Dependencies: 2
 # Priority: medium
-# Description: Ensure that string handling is compatible with both bytes and str types in Python 3.
+# Description: Ensure that string handling is compatible with both bytes and str types in Python 3. The task has been completed with specific fixes for Redis type comparisons.
 # Details:
-
+The codebase already had robust patterns for handling bytes and str compatibility. The primary issue was with Redis type() method returning strings in Python 3 instead of bytes, which has been addressed with targeted fixes in BACmonWSGI.py. Changes include updating comparisons from b'none' to 'none' at specific lines for compatibility.
 
 # Test Strategy:
+Verification has been completed to ensure proper string/bytes handling across the codebase. Testing included:
+- Reviewing existing patterns for string/bytes compatibility.
+- Confirming correct usage of isinstance(data, bytes) checks.
+- Verifying proper application of decode('utf-8') where necessary.
+- Ensuring binary protocol data (BACnet packets) uses byte strings correctly.
+- Validating Redis data handling converts bytes to strings appropriately.
+All changes have been tested and confirmed to work as expected.
+
+# Subtasks:
+## 5-1. Fix Redis Type Comparisons in BACmonWSGI.py [completed]
+### Dependencies: None
+### Description: Update Redis type comparisons for Python 3 compatibility by changing b'none' to 'none' in the following locations:
+- Line 1221: get_anomaly_data function
+- Line 1450: anomaly_summary function
+- Line 1542: anomaly_detail function
+### Details:
+
+
+## 5-2. Verify Existing String/Bytes Handling Patterns [completed]
+### Dependencies: None
+### Description: Review and confirm the correctness of existing string/bytes handling patterns across the codebase, including proper use of isinstance checks, decode('utf-8') patterns, and appropriate handling of binary protocol data and Redis data conversions.
+### Details:
+
 

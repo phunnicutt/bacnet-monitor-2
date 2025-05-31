@@ -403,11 +403,8 @@ class ConfigValidator:
             Dictionary with validation results by section
         """
         try:
-            # Check if Python 3
-            if sys.version_info.major >= 3:
-                from configparser import ConfigParser
-            else:
-                from ConfigParser import ConfigParser
+            # Python 3 ConfigParser import
+            from configparser import ConfigParser
             
             # Load configuration
             config_parser = ConfigParser()

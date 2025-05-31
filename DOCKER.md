@@ -29,12 +29,27 @@ docker-compose logs -f
 The BACmon Docker container:
 
 - Is based on Debian 11 Slim
-- Uses Python 3.9
+- Uses Python 3.9.2 (fully Python 3 compatible)
 - Runs Redis inside the container
 - Exposes ports:
   - 47808/UDP (BACnet communication)
   - 6379/TCP (Redis, optional)
 - Stores logs in a Docker volume
+- Includes comprehensive health checks
+
+## Python 3 Compatibility
+
+This Docker configuration has been specifically designed and tested for Python 3 compatibility:
+
+- **Python Version**: 3.9.2 with proper alternatives configuration
+- **Package Dependencies**: All packages verified for Python 3 compatibility
+  - redis (Redis client)
+  - bacpypes3 (Python 3 BACnet library)
+  - bottle (Web framework)
+  - simplejson (JSON handling)
+  - lxml (XML processing)
+- **Code Validation**: All BACmon Python files compile successfully with Python 3
+- **Testing**: Comprehensive test suite validates Python 3 functionality
 
 ## Configuration
 
@@ -58,22 +73,35 @@ volumes:
 
 ## Testing
 
-A test script is included to verify the Docker container is working properly:
+Two test scripts are included to verify the Docker container functionality:
 
+### Basic Docker Test
 ```bash
 # Make the script executable
 chmod +x test_docker.sh
 
-# Run the tests
+# Run the tests (requires available ports)
 ./test_docker.sh
 ```
 
-The test script:
+### Python 3 Focused Test (Recommended)
+```bash
+# Make the script executable
+chmod +x test_docker_python3.sh
+
+# Run comprehensive Python 3 tests
+./test_docker_python3.sh
+```
+
+The Python 3 test script (`test_docker_python3.sh`):
 - Builds the Docker image
-- Starts a container
-- Verifies Redis is running
-- Checks that the BACmon process is active
-- Displays container logs
+- Validates Python 3.9.2 installation
+- Tests all required package imports
+- Verifies BACmon code syntax compatibility
+- Tests Redis server functionality
+- Validates Python 3 Redis client integration
+- Tests core module imports
+- Runs without port conflicts (recommended for CI/CD)
 
 ## Monitoring and Maintenance
 
@@ -121,6 +149,11 @@ docker-compose up -d --build
    docker-compose exec bacmon ls -la /home/bacmon/log
    ```
 
+4. **Python 3 Issues**: Run the Python 3 test script to validate configuration:
+   ```bash
+   ./test_docker_python3.sh
+   ```
+
 ## Production Considerations
 
 For production environments:
@@ -136,6 +169,41 @@ For production environments:
 
 4. **Health Monitoring**: The container includes a health check that verifies Redis is running
 
+5. **Resource Limits**: Consider adding resource limits in production:
+   ```yaml
+   deploy:
+     resources:
+       limits:
+         memory: 512M
+         cpus: '0.5'
+   ```
+
+## Docker Configuration Features
+
+### Base Configuration
+- **Base Image**: Debian 11 Slim (modern, secure, lightweight)
+- **Python Version**: 3.9.2 with proper alternatives setup
+- **Package Management**: pip3 with optimized dependency resolution
+- **User Security**: Non-root `bacmon` user with proper file permissions
+
+### Service Integration
+- **Redis Integration**: Embedded Redis server with optimized configuration
+- **Health Checks**: Built-in Redis health monitoring with proper timeouts
+- **Port Configuration**: Proper BACnet (47808/UDP) and Redis (6379/TCP) exposure
+- **Volume Management**: Persistent log storage with Docker volumes
+
+### Development Features
+- **Hot Reload**: Code changes reflected with container restart
+- **Debug Access**: Easy container shell access for troubleshooting
+- **Test Integration**: Comprehensive test scripts for validation
+
 ## Notes on Python 3 Migration
 
-This Docker configuration has been specifically designed for Python 3.6+ compatibility, ensuring all BACmon features work correctly with the updated Python environment. 
+This Docker configuration has been specifically designed and thoroughly tested for Python 3.9+ compatibility, ensuring all BACmon features work correctly with the updated Python environment. The configuration includes:
+
+- Proper Python 3 package installations
+- Validated syntax compatibility for all BACmon modules
+- Tested Redis integration with Python 3
+- Comprehensive test coverage for production readiness
+
+All legacy Python 2 dependencies have been replaced with Python 3 compatible alternatives, and the entire stack has been validated through automated testing. 

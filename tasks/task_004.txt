@@ -1,11 +1,20 @@
 # Task ID: 4
 # Title: Replace ConfigParser with configparser
-# Status: in-progress
+# Status: done
 # Dependencies: 2
 # Priority: medium
-# Description: Replace `ConfigParser` with the `configparser` module for Python 3 compatibility.
+# Description: Replace `ConfigParser` with the `configparser` module for Python 3 compatibility. Task has been completed successfully with updates to relevant files.
 # Details:
+All instances of `ConfigParser` have been replaced with `configparser` for Python 3 compatibility. The following files were updated by removing Python 2/3 compatibility blocks and using direct Python 3 imports:
+- BACmon.py (line 97)
+- BACmonWSGI.py (line 103)
+- bacmon_config_helper.py (lines 130, 206)
+- config_validator.py (line 406)
 
+Verification confirmed no remaining 'from ConfigParser import' statements or related sys.version_info.major checks in the codebase.
 
 # Test Strategy:
-
+Verify the updates by:
+1. Running the application in a Python 3 environment to ensure no import errors related to `configparser`.
+2. Checking the functionality of configuration loading and saving in affected modules.
+3. Searching the codebase for any missed references to `ConfigParser` or Python 2 compatibility code.

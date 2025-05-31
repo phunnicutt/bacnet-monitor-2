@@ -127,11 +127,8 @@ def load_config(config_file: str = BACMON_INI, validate: bool = True) -> Dict[st
         ConfigValidationError: If validation fails and validate is True
     """
     try:
-        # Check if Python 3
-        if sys.version_info.major >= 3:
-            from configparser import ConfigParser
-        else:
-            from ConfigParser import ConfigParser
+        # Python 3 ConfigParser import
+        from configparser import ConfigParser
         
         # Load configuration
         config_parser = ConfigParser()
@@ -206,11 +203,8 @@ def save_config(config: Dict[str, Dict[str, Any]], config_file: str = BACMON_INI
                 error_message = validator.format_results(results)
                 raise ConfigValidationError(f"Configuration validation failed:\n{error_message}")
         
-        # Check if Python 3
-        if sys.version_info.major >= 3:
-            from configparser import ConfigParser
-        else:
-            from ConfigParser import ConfigParser
+        # Python 3 ConfigParser import
+        from configparser import ConfigParser
         
         # Create configuration parser
         config_parser = ConfigParser()
